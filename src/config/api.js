@@ -3,17 +3,8 @@
 // This allows the app to work when accessed via network IP (e.g., from mobile devices)
 
 const getApiBaseUrl = () => {
-  // Get the current hostname (e.g., 'localhost', '192.168.1.202', etc.)
-  const hostname = window.location.hostname
-  
-  // If accessing via localhost or 127.0.0.1, use localhost
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost/Backend/api'
-  }
-  
-  // Otherwise, use the current hostname (network IP)
-  // This assumes your backend is accessible at the same IP on port 80
-  return `http://${hostname}/Backend/api`
+  // Production API URL
+  return 'https://arpege.atwebpages.com/api'
 }
 
 export const API_BASE_URL = getApiBaseUrl()
