@@ -39,6 +39,20 @@ const handleConfirm = async () => {
     const data = await response.json()
     
     if (data.success) {
+      // Check if user account is active
+      const userStatus = data.user.status || 'active' // Default to active if status not set
+      
+      if (userStatus === 'inactive') {
+        message.value = 'Your account is inactive. Please contact an administrator.'
+        code.value = ''
+        isLoading.value = false
+        
+        setTimeout(() => {
+          message.value = ''
+        }, 4000)
+        return
+      }
+      
       message.value = 'Login successful!'
       code.value = ''
       
@@ -68,105 +82,126 @@ const handleConfirm = async () => {
 
 <template>
   <div class="container" :style="{ backgroundImage: `url(${backgroundImage})` }">
-    <div class="logo-container">
-      <img :src="logoImage" alt="Arpege Logo" class="logo-image" />
+
+    <div class="split-layout">
+      <!-- LEFT : Logo -->
+      <div class="left-side">
+        <img :src="logoImage" alt="Arpege Logo" class="logo-image" />
+      </div>
+
+      <!-- RIGHT : Form -->
+      <div class="right-side">
+        <input
+          type="password"
+          v-model="code"
+          placeholder="Enter code"
+          class="code-input"
+          :disabled="isLoading"
+          @keyup.enter="handleConfirm"
+        />
+
+        <button
+          @click="handleConfirm"
+          class="confirm-button"
+          :disabled="isLoading"
+        >
+          {{ isLoading ? 'Processing...' : 'Confirm' }}
+        </button>
+      </div>
     </div>
-    <div class="content">
-    <input 
-        type="password" 
-      v-model="code" 
-      placeholder="Enter code"
-      class="code-input"
-        :disabled="isLoading"
-        @keyup.enter="handleConfirm"
-      />
-      <button 
-        @click="handleConfirm"
-        class="confirm-button"
-        :disabled="isLoading"
-      >
-        {{ isLoading ? 'Processing...' : 'Confirm' }}
-      </button>
-    </div>
-    <div v-if="message" class="message" :class="{ 'message-success': message.includes('successfully'), 'message-error': message.includes('Please') }">
+
+    <div
+      v-if="message"
+      class="message"
+      :class="{
+        'message-success': message.includes('successful'),
+        'message-error':
+          message.includes('Please') ||
+          message.includes('inactive') ||
+          message.includes('Invalid') ||
+          message.includes('Connection')
+      }"
+    >
       {{ message }}
     </div>
   </div>
 </template>
 
+
 <style scoped>
+/* MAIN CONTAINER */
 .container {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 100vh;
+  inset: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
 }
 
-.logo-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  padding: 1.5rem 1rem;
+/* SPLIT LAYOUT */
+.split-layout {
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  height: 100vh;
   width: 100%;
-  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+
+/* LEFT SIDE (LOGO) */
+.left-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.45),
+    rgba(0, 0, 0, 0.15)
+  );
 }
 
 .logo-image {
-  max-width: 600px;
-  max-height: 400px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  display: block;
+  max-width: 70%;
+  max-height: 70%;
   animation: logoAnimation 3s ease-in-out infinite;
-  pointer-events: none;
 }
 
-.content {
-  position: relative;
-  z-index: 10;
+/* RIGHT SIDE (FORM) */
+.right-side {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  gap: 2.5rem;
+  align-items: center;
+  gap: 2rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
   padding: 2rem;
 }
 
-
-
+.slogan {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  text-shadow: 2px 2px 12px rgba(0, 0, 0, 0.5);
+  margin: 0;
+  animation: fadeInDown 1s ease-out;
+}
 
 .code-input {
-  padding: 16px 24px;
+  width: 100%;
+  max-width: 400px;
+  padding: 18px 24px;
   font-size: 1.1rem;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
-  width: 350px;
-  max-width: 90%;
   outline: none;
   transition: all 0.3s ease;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-              0 4px 16px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   color: #333;
   animation: fadeInUp 1s ease-out 0.2s both;
-  position: relative;
-  z-index: 11;
 }
 
 .code-input::placeholder {
@@ -176,47 +211,43 @@ const handleConfirm = async () => {
 .code-input:focus {
   border-color: rgba(255, 255, 255, 0.8);
   background: rgba(255, 255, 255, 1);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15),
-              0 6px 24px rgba(0, 212, 255, 0.2),
-              inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2),
+              0 0 0 4px rgba(52, 152, 219, 0.3);
   transform: translateY(-2px);
 }
 
 .code-input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .confirm-button {
-  padding: 16px 48px;
-  font-size: 1.1rem;
+  width: 100%;
+  max-width: 400px;
+  padding: 18px 24px;
+  font-size: 1.2rem;
   font-weight: 600;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: none;
   border-radius: 12px;
-  width: 350px;
-  max-width: 90%;
   outline: none;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1),
-              0 4px 16px rgba(0, 0, 0, 0.05);
-  color: #333;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: white;
   cursor: pointer;
+  box-shadow: 0 8px 32px rgba(52, 152, 219, 0.4);
   animation: fadeInUp 1s ease-out 0.4s both;
 }
 
-.confirm-button:hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15),
-              0 6px 24px rgba(0, 212, 255, 0.2);
-  transform: translateY(-2px);
+.confirm-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2980b9 0%, #21618c 100%);
+  box-shadow: 0 12px 48px rgba(52, 152, 219, 0.5);
+  transform: translateY(-3px);
 }
 
-.confirm-button:active {
-  transform: translateY(0);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+.confirm-button:active:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(52, 152, 219, 0.4);
 }
 
 .confirm-button:disabled {
@@ -225,37 +256,35 @@ const handleConfirm = async () => {
   transform: none;
 }
 
-.confirm-button:disabled:hover {
-  transform: none;
-}
-
+/* MESSAGE */
 .message {
   position: fixed;
   bottom: 2rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 0.95rem;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
   text-align: center;
   animation: slideUp 0.3s ease-out;
-  max-width: 350px;
+  max-width: 450px;
   width: calc(100% - 4rem);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .message-success {
-  background: rgba(76, 175, 80, 0.9);
+  background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
   color: white;
-  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.3);
 }
 
 .message-error {
-  background: rgba(244, 67, 54, 0.9);
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
   color: white;
-  box-shadow: 0 4px 16px rgba(244, 67, 54, 0.3);
 }
 
+/* ANIMATIONS */
 @keyframes fadeInDown {
   from {
     opacity: 0;
@@ -264,17 +293,6 @@ const handleConfirm = async () => {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes logoAnimation {
-  0%, 100% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateY(-10px) scale(1.05);
-    opacity: 0.95;
   }
 }
 
@@ -289,6 +307,15 @@ const handleConfirm = async () => {
   }
 }
 
+@keyframes logoAnimation {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-15px) scale(1.02);
+  }
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;
@@ -300,33 +327,44 @@ const handleConfirm = async () => {
   }
 }
 
-@media (max-width: 768px) {
-  .logo-container {
-    padding: 1rem;
+/* RESPONSIVE (MOBILE) */
+@media (max-width: 900px) {
+  .split-layout {
+    flex-direction: column;
   }
-  
+
+  .left-side {
+    flex: none;
+    height: 40vh;
+  }
+
   .logo-image {
-    max-width: 400px;
-    max-height: 250px;
+    max-width: 60%;
   }
-  
-  .code-input {
-    width: 280px;
-    font-size: 1rem;
-    padding: 14px 20px;
+
+  .right-side {
+    flex: none;
+    height: 60vh;
   }
-  
+
+  .slogan {
+    font-size: 1.8rem;
+  }
+
+  .code-input,
   .confirm-button {
-    width: 280px;
+    max-width: 90%;
+    padding: 16px 20px;
     font-size: 1rem;
-    padding: 14px 20px;
   }
-  
+
   .message {
     bottom: 1rem;
     width: calc(100% - 2rem);
-    max-width: 90%;
+    font-size: 0.95rem;
+    padding: 12px 20px;
   }
 }
+
 </style>
 

@@ -1,5 +1,21 @@
 <template>
   <div class="crud-container">
+    <!-- Status Filter Tabs -->
+    <div class="status-tabs">
+      <button 
+        @click="currentFilter = 'active'" 
+        :class="['tab-btn', { active: currentFilter === 'active' }]"
+      >
+        Actifs
+      </button>
+      <button 
+        @click="currentFilter = 'inactive'" 
+        :class="['tab-btn', { active: currentFilter === 'inactive' }]"
+      >
+        Inactifs
+      </button>
+    </div>
+
     <div class="crud-header">
       <button @click="openAddModal" class="btn btn-primary">
         <span>+</span> Ajouter Employé
@@ -14,18 +30,19 @@
             <th>Username</th>
             <th>Password</th>
             <th>Role</th>
+            <th>Status</th>
             <th>Date de Création</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="6" class="loading">Chargement...</td>
+            <td colspan="7" class="loading">Chargement...</td>
           </tr>
-          <tr v-else-if="users.length === 0">
-            <td colspan="6" class="empty">Aucun employé trouvé</td>
+          <tr v-else-if="filteredUsers.length === 0">
+            <td colspan="7" class="empty">Aucun employé trouvé</td>
           </tr>
-          <tr v-else v-for="user in users" :key="user.id">
+          <tr v-else v-for="user in filteredUsers" :key="user.id">
             <td>{{ user.id }}</td>
             <td>{{ user.username }}</td>
             <td>
@@ -43,6 +60,11 @@
               </div>
             </td>
             <td><span class="badge badge-employee">{{ user.role }}</span></td>
+            <td>
+              <span :class="['badge', (user.status || 'active') === 'active' ? 'badge-active' : 'badge-inactive']">
+                {{ (user.status || 'active') === 'active' ? 'Actif' : 'Inactif' }}
+              </span>
+            </td>
             <td>{{ formatDate(user.created_at) }}</td>
             <td class="actions">
               <button @click="openEditModal(user)" class="btn btn-edit">Modifier</button>
@@ -91,6 +113,13 @@
               <option value="employee">Employee</option>
             </select>
           </div>
+          <div class="form-group">
+            <label>Status *</label>
+            <select v-model="formData.status" required>
+              <option value="active">Actif</option>
+              <option value="inactive">Inactif</option>
+            </select>
+          </div>
           <div class="modal-footer">
             <button type="button" @click="closeModal" class="btn btn-cancel">Annuler</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">
@@ -123,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
 
 const BASE_API_URL = getApiUrl(API_ENDPOINTS.USER_CRUD)
@@ -141,11 +170,22 @@ const message = ref('')
 const messageType = ref('')
 const showPassword = ref(false)
 const visiblePasswords = ref({})
+const currentFilter = ref('active')
 
 const formData = ref({
   username: '',
   password: '',
-  role: 'employee'
+  role: 'employee',
+  status: 'active'
+})
+
+// Computed property to filter users based on current tab
+const filteredUsers = computed(() => {
+  return users.value.filter(user => {
+    // Treat employees without a status field as "active" by default
+    const userStatus = user.status || 'active'
+    return userStatus === currentFilter.value
+  })
 })
 
 const fetchUsers = async () => {
@@ -167,7 +207,7 @@ const fetchUsers = async () => {
 
 const openAddModal = () => {
   editingUser.value = null
-  formData.value = { username: '', password: '', role: 'employee' }
+  formData.value = { username: '', password: '', role: 'employee', status: 'active' }
   showModal.value = true
 }
 
@@ -176,7 +216,8 @@ const openEditModal = (user) => {
   formData.value = {
     username: user.username,
     password: user.password,
-    role: user.role
+    role: user.role,
+    status: user.status || 'active'
   }
   showModal.value = true
 }
@@ -184,7 +225,7 @@ const openEditModal = (user) => {
 const closeModal = () => {
   showModal.value = false
   editingUser.value = null
-  formData.value = { username: '', password: '', role: 'employee' }
+  formData.value = { username: '', password: '', role: 'employee', status: 'active' }
   showPassword.value = false
 }
 
@@ -293,6 +334,37 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.status-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 0;
+}
+
+.tab-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #7f8c8d;
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s ease;
+  position: relative;
+  bottom: -2px;
+}
+
+.tab-btn:hover {
+  color: #3498db;
+}
+
+.tab-btn.active {
+  color: #3498db;
+  border-bottom-color: #3498db;
+}
+
 .crud-header {
   display: flex;
   justify-content: space-between;
@@ -392,6 +464,16 @@ onMounted(() => {
 
 .badge-employee {
   background: #3498db;
+  color: white;
+}
+
+.badge-active {
+  background: #27ae60;
+  color: white;
+}
+
+.badge-inactive {
+  background: #95a5a6;
   color: white;
 }
 
@@ -598,6 +680,15 @@ onMounted(() => {
 @media (max-width: 768px) {
   .crud-container {
     padding: 1rem;
+  }
+
+  .status-tabs {
+    gap: 0.25rem;
+  }
+
+  .tab-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
   }
 
   .crud-header {

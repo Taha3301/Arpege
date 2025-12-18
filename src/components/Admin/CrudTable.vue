@@ -13,16 +13,15 @@
             <th>ID</th>
             <th>Numéro de Table</th>
             <th>Statut</th>
-            <th>Photo</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="5" class="loading">Chargement...</td>
+            <td colspan="4" class="loading">Chargement...</td>
           </tr>
           <tr v-else-if="tables.length === 0">
-            <td colspan="5" class="empty">Aucune table trouvée</td>
+            <td colspan="4" class="empty">Aucune table trouvée</td>
           </tr>
           <tr v-else v-for="table in tables" :key="table.id">
             <td>{{ table.id }}</td>
@@ -32,14 +31,7 @@
                 {{ getStatusLabel(table.status) }}
               </span>
             </td>
-            <td class="table-photo-cell">
-              <div v-if="getTablePhotoSync(table.id)" class="table-photo-preview">
-                <img :src="getTablePhotoSync(table.id)" :alt="`Table ${table.table_number}`" />
-                <button @click="removeTablePhoto(table.id)" class="remove-photo-btn" title="Supprimer la photo">×</button>
-                <button @click="downloadTablePhoto(table.id)" class="download-photo-btn" title="Télécharger la photo">⬇</button>
-              </div>
-              <div v-else class="no-photo">Aucune photo</div>
-            </td>
+
             <td class="actions">
               <button @click="openEditModal(table)" class="btn btn-edit">Modifier</button>
               <button @click="confirmDelete(table)" class="btn btn-delete">Supprimer</button>
@@ -70,30 +62,7 @@
               <option value="indisponible">Indisponible</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>Photo de la table</label>
-            <div class="photo-upload-section">
-              <div v-if="formData.photoPreview" class="photo-preview">
-                <img :src="formData.photoPreview" alt="Aperçu" />
-                <button type="button" @click="removePhoto" class="remove-preview-btn">×</button>
-              </div>
-              <div v-else-if="editingTable && getTablePhotoSync(editingTable.id)" class="photo-preview">
-                <img :src="getTablePhotoSync(editingTable.id)" alt="Photo actuelle" />
-                <button type="button" @click="removePhoto" class="remove-preview-btn">×</button>
-              </div>
-              <input 
-                type="file" 
-                @change="handlePhotoUpload" 
-                accept="image/*" 
-                ref="photoInput"
-                class="photo-input"
-                id="table-photo-input"
-              />
-              <label for="table-photo-input" class="photo-upload-btn">
-                {{ formData.photoPreview || (editingTable && getTablePhotoSync(editingTable.id)) ? 'Changer la photo' : 'Ajouter une photo' }}
-              </label>
-            </div>
-          </div>
+
           <div class="modal-footer">
             <button type="button" @click="closeModal" class="btn btn-cancel">Annuler</button>
             <button type="submit" class="btn btn-primary" :disabled="saving">

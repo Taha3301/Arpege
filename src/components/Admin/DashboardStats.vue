@@ -433,7 +433,31 @@ onMounted(() => {
 <style scoped>
 .dashboard-stats {
   padding: 0;
-  min-height: 100%;
+  min-height: 100vh;
+  background-image: url('../../assets/bgdashboard.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+.dashboard-content {
+  position: relative;
+  z-index: 1;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .dashboard-content {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-content {
+    padding: 0.75rem;
+  }
 }
 
 /* Loading & Error States */
@@ -496,13 +520,13 @@ onMounted(() => {
 .dashboard-header h2 {
   margin: 0;
   font-size: 2rem;
-  color: #2c3e50;
+  color: white;
   font-weight: 700;
 }
 
 .date-info {
   margin: 0.5rem 0 0 0;
-  color: #7f8c8d;
+  color: white;
   font-size: 0.95rem;
   text-transform: capitalize;
 }
@@ -605,9 +629,21 @@ onMounted(() => {
 /* Stats Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
+}
+
+@media (max-width: 1200px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stat-card {
@@ -734,9 +770,16 @@ onMounted(() => {
 /* Section Row */
 .section-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .section-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 
 /* Chart Card */
@@ -816,6 +859,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
 .status-item {
@@ -919,6 +965,8 @@ onMounted(() => {
 
 .products-table {
   overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 table {
@@ -977,6 +1025,9 @@ td {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
 .employee-item {
@@ -1034,6 +1085,21 @@ td {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .category-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .category-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .category-card {
@@ -1130,20 +1196,48 @@ td {
   font-weight: 600;
 }
 
+/* Custom Scrollbar Styling */
+.status-list::-webkit-scrollbar,
+.products-table::-webkit-scrollbar,
+.employees-list::-webkit-scrollbar,
+.category-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.status-list::-webkit-scrollbar-track,
+.products-table::-webkit-scrollbar-track,
+.employees-list::-webkit-scrollbar-track,
+.category-grid::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.status-list::-webkit-scrollbar-thumb,
+.products-table::-webkit-scrollbar-thumb,
+.employees-list::-webkit-scrollbar-thumb,
+.category-grid::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+.status-list::-webkit-scrollbar-thumb:hover,
+.products-table::-webkit-scrollbar-thumb:hover,
+.employees-list::-webkit-scrollbar-thumb:hover,
+.category-grid::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+}
+
+
 /* Responsive */
 @media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .section-row {
-    grid-template-columns: 1fr;
-  }
-
   .dashboard-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
+  }
+
+  .dashboard-header h2 {
+    font-size: 1.5rem;
   }
 
   .header-actions {
@@ -1174,8 +1268,270 @@ td {
     width: 100%;
   }
 
-  .category-grid {
-    grid-template-columns: 1fr;
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-icon {
+    font-size: 2rem;
+    width: 50px;
+    height: 50px;
+  }
+
+  .chart-card h3,
+  .table-card h3 {
+    font-size: 1rem;
+  }
+
+  .products-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -0.5rem;
+    padding: 0 0.5rem;
+  }
+
+  table {
+    min-width: 600px;
+    font-size: 0.85rem;
+  }
+
+  th, td {
+    padding: 0.5rem 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  th {
+    white-space: nowrap;
+  }
+
+  .rank {
+    font-size: 0.95rem;
+  }
+
+  .product-name {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .employee-item {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+
+  .employees-list {
+    gap: 0.75rem;
+  }
+
+  .bar-chart,
+  .month-chart {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart-container {
+    height: 250px;
+  }
+
+  .month-chart {
+    height: 250px;
   }
 }
+
+@media (max-width: 480px) {
+  .dashboard-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .stat-card {
+    padding: 1rem;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+
+  .stat-content h3 {
+    font-size: 0.8rem;
+  }
+
+  .stat-icon {
+    font-size: 1.75rem;
+    width: 45px;
+    height: 45px;
+  }
+
+  .chart-card,
+  .table-card {
+    padding: 1rem;
+  }
+
+  .chart-card h3,
+  .table-card h3 {
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+  }
+
+  .category-revenue {
+    font-size: 1.25rem;
+  }
+
+  .category-card {
+    padding: 1rem;
+  }
+
+  .employee-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 0.9rem;
+  }
+
+  .employee-info h4 {
+    font-size: 0.9rem;
+  }
+
+  .employee-revenue {
+    font-size: 1rem;
+  }
+
+  /* Additional table optimizations for small phones */
+  table {
+    min-width: 500px;
+  }
+
+  th, td {
+    padding: 0.4rem 0.3rem;
+    font-size: 0.75rem;
+  }
+
+  .product-name {
+    max-width: 120px;
+  }
+
+  .employee-item {
+    padding: 0.65rem;
+    gap: 0.65rem;
+  }
+
+  .employee-info h4 {
+    font-size: 0.85rem;
+  }
+
+  .employee-info p {
+    font-size: 0.75rem;
+  }
+
+  .employee-revenue {
+    font-size: 0.9rem;
+  }
+}
+
+/* iPhone 14 and similar devices (390px width) */
+@media (max-width: 430px) {
+  /* Products Table - Make it narrower and more compact */
+  .products-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 100%;
+    font-size: 0.7rem;
+  }
+
+  th {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.7rem;
+  }
+
+  .rank {
+    font-size: 0.85rem;
+    padding-right: 0.15rem;
+  }
+
+  .product-name {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.7rem;
+  }
+
+  .category {
+    font-size: 0.65rem;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .quantity {
+    font-size: 0.7rem;
+  }
+
+  .revenue {
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+
+  /* Employees List - Make it more compact */
+  .employees-list {
+    gap: 0.5rem;
+    padding-right: 0;
+  }
+
+  .employee-item {
+    padding: 0.5rem;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+  }
+
+  .employee-avatar {
+    width: 35px;
+    height: 35px;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .employee-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .employee-info h4 {
+    font-size: 0.75rem;
+    margin-bottom: 0.15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .employee-info p {
+    font-size: 0.65rem;
+  }
+
+  .employee-revenue {
+    font-size: 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Table Card padding */
+  .table-card {
+    padding: 1rem 0.75rem;
+  }
+
+  .table-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+}
+
 </style>
