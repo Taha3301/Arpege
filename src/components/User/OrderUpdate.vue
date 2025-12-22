@@ -49,7 +49,7 @@
                 <p class="product-category">{{ product.category_name || 'Sans catégorie' }}</p>
                 <p v-if="getMaxAvailableForProduct(product) === 0" class="stock-warning">Rupture de stock</p>
                 <p v-else-if="getMaxAvailableForProduct(product) !== Infinity" class="stock-info">
-                  Stock possible: {{ getMaxAvailableForProduct(product) }}
+                  Stock possible: {{ getMaxAvailableForProduct(product) }} (Peut être dépassé)
                 </p>
               </div>
               <div class="product-actions">
@@ -64,7 +64,6 @@
                   <span class="quantity">{{ getProductQuantity(product.id) }}</span>
                   <button 
                     @click="increaseQuantity(product.id)"
-                    :disabled="getMaxAvailableForProduct(product) === 0"
                     class="qty-btn"
                   >
                     +
@@ -307,25 +306,12 @@ const increaseQuantity = (productId) => {
   const product = products.value.find(p => p.id === productId)
   if (!product) return
 
-  const maxAvailable = getMaxAvailableForProduct(product)
-  if (maxAvailable === 0) {
-    showMessage('Stock insuffisant', 'error')
-    return
-  }
-
-  // On update page: existing products in the original order cannot be modified
-  if (isOriginalProduct(productId)) {
-    showMessage('Vous ne pouvez ajouter que de nouveaux produits à cette commande.', 'error')
-    return
-  }
-
+  // Removed stock limit checks to allow forcing orders
+  // if (maxAvailable === 0) { ... }
+  // if (isOriginalProduct(productId)) { ... }
+  
   const existingItem = orderItems.value.find(item => item.product.id === productId)
-  const currentQty = existingItem ? existingItem.quantity : 0
-
-  if (currentQty >= maxAvailable && maxAvailable !== Infinity) {
-    showMessage('Stock insuffisant', 'error')
-    return
-  }
+  // Check removed: if (currentQty >= maxAvailable && maxAvailable !== Infinity) { ... }
 
   if (existingItem) {
     existingItem.quantity++
@@ -335,14 +321,17 @@ const increaseQuantity = (productId) => {
 }
 
 const decreaseQuantity = (productId) => {
-  // On update page: do not allow decreasing quantities at all
-  if (isOriginalProduct(productId)) {
-    showMessage('Vous ne pouvez pas diminuer les produits existants. Ajoutez seulement de nouveaux produits.', 'error')
-    return
-  }
+  // Allowed decreasing existing products
+  // if (isOriginalProduct(productId)) { ... }
 
   const existingItem = orderItems.value.find(item => item.product.id === productId)
   if (existingItem) {
+    // Check if we are trying to go below the original confirmed quantity
+    if (existingItem.originalQuantity && existingItem.quantity <= existingItem.originalQuantity) {
+      showMessage('Vous ne pouvez pas diminuer la quantité validée (déjà en cuisine).', 'error')
+      return
+    }
+
     existingItem.quantity--
     if (existingItem.quantity <= 0) {
       removeItem(productId)
@@ -351,9 +340,13 @@ const decreaseQuantity = (productId) => {
 }
 
 const removeItem = (productId) => {
-  // Do not allow removing products that were in the original order
-  if (isOriginalProduct(productId)) {
-    showMessage('Vous ne pouvez pas supprimer un produit de la commande originale. Ajoutez seulement de nouveaux produits.', 'error')
+  // Allowed removing existing products
+  // if (isOriginalProduct(productId)) { ... }
+
+  // Prevent removing items that were part of the original order
+  const existingItem = orderItems.value.find(item => item.product.id === productId)
+  if (existingItem && existingItem.originalQuantity > 0) {
+    showMessage('Vous ne pouvez pas supprimer un article déjà validé.', 'error')
     return
   }
 
@@ -380,7 +373,8 @@ const loadExistingOrder = async () => {
         if (!product) return null
         return {
           product,
-          quantity: Number(item.quantity) || 0
+          quantity: Number(item.quantity) || 0,
+          originalQuantity: Number(item.quantity) || 0 // Store original confirmed quantity
         }
       }).filter(Boolean)
 
