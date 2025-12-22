@@ -137,6 +137,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':quantity' => $item['quantity'],
                 ':price' => $item['price']
             ]);
+
+            /* 🔻 STOCK DEDUCTION (Consume) */
+            $stmt = $pdo->prepare("
+                SELECT stock_id, quantity AS stock_qty_per_product
+                FROM product_stock_ingredient
+                WHERE product_id = :product_id
+            ");
+            $stmt->execute([':product_id' => $item['product_id']]);
+            $ingredients = $stmt->fetchAll();
+
+            foreach ($ingredients as $ing) {
+                // Deduct: stock = stock - (ingredient_needed * quantity_ordered)
+                $pdo->prepare("
+                    UPDATE stock
+                    SET quantity = quantity - (:used_qty * :order_qty)
+                    WHERE id = :stock_id
+                ")->execute([
+                            ':used_qty' => $ing['stock_qty_per_product'],
+                            ':order_qty' => $item['quantity'],
+                            ':stock_id' => $ing['stock_id']
+                        ]);
+            }
         }
 
         $pdo->prepare("UPDATE `table` SET status = 'Occupée' WHERE id = :id")
@@ -167,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     try {
         $pdo->beginTransaction();
 
-        /* 🔹 Update status/payment */
+        /* 🔹 Update status/payment (No Stock Change) */
         if (isset($input['status'])) {
             $stmt = $pdo->prepare("
                 UPDATE `order`
@@ -191,9 +213,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
             }
         }
 
-        /* 🔹 Update items (Full replacement) */
+        /* 🔹 Update items (Full replacement with Stock Adjustment) */
         if (isset($input['items']) && is_array($input['items'])) {
-            // Update Order Header (Total, etc.)
+            // Update Order Header
             $stmt = $pdo->prepare("
                 UPDATE `order`
                 SET total = :total,
@@ -206,12 +228,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
                 ':id' => $id
             ]);
 
-            // Clear existing items
+            /* 1. RESTORE STOCK for OLD items */
+            $stmt = $pdo->prepare("
+                SELECT oi.*, psi.stock_id, psi.quantity AS stock_qty_per_product
+                FROM order_item oi
+                JOIN product_stock_ingredient psi ON oi.product_id = psi.product_id
+                WHERE oi.order_id = :id
+            ");
+            $stmt->execute([':id' => $id]);
+            $old_items = $stmt->fetchAll();
+
+            foreach ($old_items as $old) {
+                // Restore: stock = stock + (ingredient_needed * old_quantity)
+                $pdo->prepare("
+                    UPDATE stock
+                    SET quantity = quantity + (:used_qty * :order_qty)
+                    WHERE id = :stock_id
+                ")->execute([
+                            ':used_qty' => $old['stock_qty_per_product'],
+                            ':order_qty' => $old['quantity'],
+                            ':stock_id' => $old['stock_id']
+                        ]);
+            }
+
+            /* 2. DELETE OLD items */
             $pdo->prepare("DELETE FROM order_item WHERE order_id = :id")
                 ->execute([':id' => $id]);
 
-            // Insert new items
+            /* 3. INSERT NEW items & DEDUCT STOCK */
             foreach ($input['items'] as $item) {
+                // Insert
                 $stmt = $pdo->prepare("
                     INSERT INTO order_item (order_id, product_id, quantity, price)
                     VALUES (:order_id, :product_id, :quantity, :price)
@@ -222,6 +268,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
                     ':quantity' => $item['quantity'],
                     ':price' => $item['price']
                 ]);
+
+                // Deduct
+                $stmt = $pdo->prepare("
+                    SELECT stock_id, quantity AS stock_qty_per_product
+                    FROM product_stock_ingredient
+                    WHERE product_id = :product_id
+                ");
+                $stmt->execute([':product_id' => $item['product_id']]);
+                $ingredients = $stmt->fetchAll();
+
+                foreach ($ingredients as $ing) {
+                    $pdo->prepare("
+                        UPDATE stock
+                        SET quantity = quantity - (:used_qty * :order_qty)
+                        WHERE id = :stock_id
+                    ")->execute([
+                                ':used_qty' => $ing['stock_qty_per_product'],
+                                ':order_qty' => $item['quantity'],
+                                ':stock_id' => $ing['stock_id']
+                            ]);
+                }
             }
         }
 
@@ -251,6 +318,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
         $stmt = $pdo->prepare("SELECT table_id FROM `order` WHERE id = :id");
         $stmt->execute([':id' => $id]);
         $order = $stmt->fetch();
+
+        /* 🔻 Restore Stock before Deleting */
+        $stmt = $pdo->prepare("
+            SELECT oi.*, psi.stock_id, psi.quantity AS stock_qty_per_product
+            FROM order_item oi
+            JOIN product_stock_ingredient psi ON oi.product_id = psi.product_id
+            WHERE oi.order_id = :id
+        ");
+        $stmt->execute([':id' => $id]);
+        $items_to_restore = $stmt->fetchAll();
+
+        foreach ($items_to_restore as $item) {
+            $pdo->prepare("
+                UPDATE stock
+                SET quantity = quantity + (:used_qty * :order_qty)
+                WHERE id = :stock_id
+            ")->execute([
+                        ':used_qty' => $item['stock_qty_per_product'],
+                        ':order_qty' => $item['quantity'],
+                        ':stock_id' => $item['stock_id']
+                    ]);
+        }
 
         $pdo->prepare("DELETE FROM order_item WHERE order_id = :id")
             ->execute([':id' => $id]);

@@ -257,7 +257,9 @@ const formatDate = (dateString) => {
   try {
     const date = new Date(dateString)
     if (isNaN(date.getTime())) return '-'
-    return date.toLocaleDateString('fr-FR', {
+    // Fix timezone offset: add 1 hour
+    const adjustedDate = new Date(date.getTime() + 3600000)
+    return adjustedDate.toLocaleDateString('fr-FR', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

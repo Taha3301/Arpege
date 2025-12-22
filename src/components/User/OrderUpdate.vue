@@ -310,13 +310,30 @@ const increaseQuantity = (productId) => {
   // if (maxAvailable === 0) { ... }
   // if (isOriginalProduct(productId)) { ... }
   
+  const maxAvailable = getMaxAvailableForProduct(product)
+
+  // Verify stock for NEW additions (Current - Original)
   const existingItem = orderItems.value.find(item => item.product.id === productId)
-  // Check removed: if (currentQty >= maxAvailable && maxAvailable !== Infinity) { ... }
+  
+  const currentTotal = existingItem ? existingItem.quantity : 0
+  const originalQty = existingItem ? (existingItem.originalQuantity || 0) : 0
+  
+  // We want to add 1 more. Check if (currentAdded + 1) > maxAvailable
+  const newAddedQty = (currentTotal - originalQty) + 1
+
+  if (newAddedQty > maxAvailable && maxAvailable !== Infinity) {
+    showMessage(`Stock insuffisant. Max disponible: ${maxAvailable}`, 'error')
+    return
+  }
 
   if (existingItem) {
     existingItem.quantity++
   } else {
-    orderItems.value.push({ product, quantity: 1 })
+    orderItems.value.push({ 
+      product, 
+      quantity: 1,
+      originalQuantity: 0 
+    })
   }
 }
 

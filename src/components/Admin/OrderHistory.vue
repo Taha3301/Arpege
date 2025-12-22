@@ -253,7 +253,9 @@ const resetFilters = () => {
 
 const formatDateTime = (dt) => {
   if (!dt) return ''
-  return new Date(dt).toLocaleString('fr-FR')
+  // Fix timezone offset: add 1 hour
+  const date = new Date(dt)
+  return new Date(date.getTime() + 3600000).toLocaleString('fr-FR')
 }
 
 const formatPrice = (value) => {
