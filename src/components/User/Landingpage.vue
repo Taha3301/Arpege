@@ -16,7 +16,7 @@
           v-for="table in tables" 
           :key="table.id"
           :class="['table-card', getStatusClass(table.status), { 'updating': updatingTables.has(table.id) }]"
-          :style="getTableCardStyle(table.id)"
+          :style="getTableCardStyle(table)"
         >
           <div class="table-header">
             <div class="table-number">{{ table.table_number }}</div>
@@ -117,73 +117,11 @@ const message = ref('')
 const messageType = ref('')
 const API_URL = getApiUrl(API_ENDPOINTS.TABLE)
 
-// IndexedDB for table photos
-const DB_NAME = 'TablesPhotosDB'
-const DB_VERSION = 1
-const STORE_NAME = 'table_photos'
-let db = null
-const photoCache = ref({})
-
-// Initialize IndexedDB
-const initDB = () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    
-    request.onerror = () => {
-      console.error('IndexedDB error:', request.error)
-      reject(request.error)
-    }
-    
-    request.onsuccess = () => {
-      db = request.result
-      resolve(db)
-    }
-    
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const objectStore = database.createObjectStore(STORE_NAME, { keyPath: 'tableId' })
-        objectStore.createIndex('tableId', 'tableId', { unique: true })
-      }
-    }
-  })
-}
-
-// Get table photo from IndexedDB
-const getTablePhoto = async (tableId) => {
-  if (!tableId || !db) return null
-  
-  return new Promise((resolve) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.get(tableId)
-    
-    request.onsuccess = () => {
-      const result = request.result
-      resolve(result ? result.imageData : null)
-    }
-    
-    request.onerror = () => {
-      resolve(null)
-    }
-  })
-}
-
-// Load photo for a table
-const loadTablePhoto = async (tableId) => {
-  if (!tableId) return
-  const photo = await getTablePhoto(tableId)
-  if (photo) {
-    photoCache.value[tableId] = photo
-  }
-}
-
 // Get style for table card with background image
-const getTableCardStyle = (tableId) => {
-  const photo = photoCache.value[tableId]
-  if (photo) {
+const getTableCardStyle = (table) => {
+  if (table.image) {
     return {
-      backgroundImage: `url(${photo})`,
+      backgroundImage: `url(${table.image})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat'
@@ -206,10 +144,6 @@ const fetchTables = async () => {
     const data = await response.json()
     if (data.success) {
       tables.value = Array.isArray(data.data) ? data.data : []
-      // Load photos for all tables
-      if (tables.value.length > 0 && db) {
-        await Promise.all(tables.value.map(table => loadTablePhoto(table.id)))
-      }
     } else {
       tables.value = []
     }
@@ -374,17 +308,7 @@ const handleLogout = () => {
 }
 
 onMounted(async () => {
-  // Initialize IndexedDB
-  try {
-    await initDB()
-    console.log('IndexedDB initialized for table photos')
-  } catch (error) {
-    console.error('Failed to initialize IndexedDB:', error)
-  }
-  
-  // Fetch tables and load photos
   await fetchTables()
-  
 })
   
   </script>
@@ -482,14 +406,14 @@ onMounted(async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.3); /* Darker, more transparent overlay for clarity */
   z-index: 0;
   transition: all 0.3s ease;
   pointer-events: none;
 }
 
 .table-card:hover::before {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.1); /* Even clearer on hover */
 }
 
 .table-card > * {
@@ -704,8 +628,9 @@ onMounted(async () => {
 
 .select-hint {
   font-size: 0.85rem;
-  color: #7f8c8d;
+  color: white;
   font-style: italic;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .table-card:hover {
@@ -729,7 +654,7 @@ onMounted(async () => {
 }
 
 .table-card.status-occupied::before {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.6); /* More dimmed when occupied */
 }
 
 .table-card.status-reserved {
@@ -748,14 +673,15 @@ onMounted(async () => {
 }
 
 .table-card.status-unavailable::before {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .table-number {
   font-size: 3rem;
   font-weight: bold;
-  color: #2c3e50;
+  color: white;
   margin-bottom: 0.5rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 .table-status {

@@ -135,6 +135,20 @@
                 </td>
               </tr>
             </tbody>
+            <tfoot v-if="selectedOrder && orderItemsDetail.length > 0">
+              <tr class="footer-row subtotal">
+                <td colspan="3">Total Brut</td>
+                <td>{{ formatPrice(selectedOrder.total_before_decrease || calculateRawTotal()) }}</td>
+              </tr>
+              <tr class="footer-row discount">
+                <td colspan="3">Remise ({{ selectedOrder.percent_decrease || 16.7 }}%)</td>
+                <td>- {{ formatPrice((selectedOrder.total_before_decrease || calculateRawTotal()) * ((selectedOrder.percent_decrease || 16.7) / 100)) }}</td>
+              </tr>
+              <tr class="footer-row total">
+                <td colspan="3">Total Payé</td>
+                <td>{{ formatPrice(selectedOrder.total) }}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -287,6 +301,10 @@ const openDetails = async (order) => {
   } finally {
     loadingDetails.value = false
   }
+}
+
+const calculateRawTotal = () => {
+  return orderItemsDetail.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 }
 
 const closeDetails = () => {
@@ -484,11 +502,32 @@ onMounted(() => {
   font-size: 0.9rem;
 }
 
-.details-table th,
 .details-table td {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid #ecf0f1;
   text-align: left;
+}
+
+.footer-row td {
+  padding: 0.5rem 0.75rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.footer-row.subtotal {
+  color: #7f8c8d;
+  border-top: 2px solid #ecf0f1;
+}
+
+.footer-row.discount {
+  color: #e74c3c;
+}
+
+.footer-row.total {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #27ae60;
+  border-top: 1px solid #ecf0f1;
 }
 
 @media (max-width: 768px) {

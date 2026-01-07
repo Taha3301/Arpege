@@ -92,17 +92,52 @@
               <div class="item-info">
                 <span class="item-name">{{ item.product.name }}</span>
                 <span class="item-price">{{ formatPrice(item.product.price) }} × {{ item.quantity }}</span>
+                
+                <!-- Individual Discount Toggle (Only if global is off) -->
+                <div v-if="!isGlobalDiscount" class="item-discount-toggle">
+                  <label class="switch-label">
+                    <input 
+                      type="checkbox" 
+                      v-model="item.hasDiscount"
+                    >
+                    <span class="switch-text">Remise 16.7%</span>
+                  </label>
+                </div>
               </div>
               <div class="item-total">
-                {{ formatPrice(item.product.price * item.quantity) }}
+                <div v-if="item.hasDiscount && !isGlobalDiscount" class="item-original-price">
+                  {{ formatPrice(item.product.price * item.quantity) }}
+                </div>
+                <div :class="{ 'discounted-price': item.hasDiscount && !isGlobalDiscount }">
+                  {{ formatPrice(item.hasDiscount && !isGlobalDiscount ? (item.product.price * item.quantity * (1 - ORDER_PERCENTAGE / 100)) : (item.product.price * item.quantity)) }}
+                </div>
               </div>
               <button @click="removeItem(item.product.id)" class="remove-btn">×</button>
             </div>
           </div>
 
           <div class="order-total">
+            <div class="discount-settings">
+              <label class="global-discount-toggle">
+                <input type="checkbox" v-model="isGlobalDiscount">
+                <span class="toggle-text">Appliquer remise 16.7% sur TOUTE la commande</span>
+              </label>
+            </div>
+            
+            <div class="total-row subtotal">
+              <span>Total Brut:</span>
+              <span class="subtotal-amount">{{ formatPrice(totalBeforeDecrease) }}</span>
+            </div>
+            <div v-if="isGlobalDiscount" class="total-row discount">
+              <span>Remise Globale ({{ ORDER_PERCENTAGE }}%):</span>
+              <span class="discount-amount">- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
+            </div>
+            <div v-else-if="totalDiscountAmount > 0" class="total-row discount">
+              <span>Total Remises:</span>
+              <span class="discount-amount">- {{ formatPrice(totalDiscountAmount) }}</span>
+            </div>
             <div class="total-row">
-              <span>Total:</span>
+              <span>Total à payer:</span>
               <span class="total-amount">{{ formatPrice(totalAmount) }}</span>
             </div>
           </div>
@@ -136,8 +171,20 @@
           </div>
         </div>
 
+        <div class="confirm-total-row subtotal">
+          <span>Total Brut</span>
+          <span>{{ formatPrice(totalBeforeDecrease) }}</span>
+        </div>
+        <div v-if="isGlobalDiscount" class="confirm-total-row discount">
+          <span>Remise Globale ({{ ORDER_PERCENTAGE }}%)</span>
+          <span>- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
+        </div>
+        <div v-else-if="totalDiscountAmount > 0" class="confirm-total-row discount">
+          <span>Total Remises</span>
+          <span>- {{ formatPrice(totalDiscountAmount) }}</span>
+        </div>
         <div class="confirm-total-row">
-          <span>Total</span>
+          <span>Total à payer</span>
           <span class="confirm-total-amount">{{ formatPrice(totalAmount) }}</span>
         </div>
 
@@ -188,6 +235,8 @@ const submitting = ref(false)
 const currentOrderId = ref(null)
 const message = ref('')
 const messageType = ref('')
+const ORDER_PERCENTAGE = 16.7
+const isGlobalDiscount = ref(true)
 
 const showConfirmModal = ref(false)
 
@@ -198,10 +247,26 @@ const filteredProducts = computed(() => {
   return products.value.filter(p => p.category_id === selectedCategory.value)
 })
 
-const totalAmount = computed(() => {
+const totalBeforeDecrease = computed(() => {
   return orderItems.value.reduce((sum, item) => {
     return sum + (item.product.price * item.quantity)
   }, 0)
+})
+
+const totalDiscountAmount = computed(() => {
+  if (isGlobalDiscount.value) {
+    return totalBeforeDecrease.value * (ORDER_PERCENTAGE / 100)
+  }
+  return orderItems.value.reduce((sum, item) => {
+    if (item.hasDiscount) {
+      return sum + (item.product.price * item.quantity * (ORDER_PERCENTAGE / 100))
+    }
+    return sum
+  }, 0)
+})
+
+const totalAmount = computed(() => {
+  return totalBeforeDecrease.value - totalDiscountAmount.value
 })
 
 const fetchProducts = async () => {
@@ -283,7 +348,7 @@ const increaseQuantity = (productId) => {
   if (existingItem) {
     existingItem.quantity++
   } else {
-    orderItems.value.push({ product, quantity: 1 })
+    orderItems.value.push({ product, quantity: 1, hasDiscount: true })
   }
 }
 
@@ -361,12 +426,19 @@ const confirmSubmit = async () => {
     
     const orderData = {
       table_id: props.selectedTable.id,
-      items: orderItems.value.map(item => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        price: item.product.price
-      })),
-      total: totalAmount.value
+      items: orderItems.value.map(item => {
+        const hasDiscount = isGlobalDiscount.value || item.hasDiscount
+        return {
+          product_id: item.product.id,
+          quantity: item.quantity,
+          price: hasDiscount ? (item.product.price * (1 - ORDER_PERCENTAGE / 100)) : item.product.price,
+          percent_decrease: hasDiscount ? ORDER_PERCENTAGE : 0,
+          total_before_decrease: item.product.price * item.quantity
+        }
+      }),
+      total: totalAmount.value,
+      percent_decrease: isGlobalDiscount.value ? ORDER_PERCENTAGE : 0,
+      total_before_decrease: totalBeforeDecrease.value
     }
     
     // Always include employee_id if it exists (even if 0, though unlikely)
@@ -723,6 +795,69 @@ onMounted(async () => {
 
 .total-amount {
   color: #27ae60;
+}
+
+.total-row.subtotal,
+.total-row.discount {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: #7f8c8d;
+}
+
+.total-row.discount .discount-amount {
+  color: #e74c3c;
+}
+
+.discount-settings {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed #ddd;
+}
+
+.global-discount-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.global-discount-toggle input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.item-discount-toggle {
+  margin-top: 0.5rem;
+}
+
+.switch-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #7f8c8d;
+}
+
+.switch-label input {
+  cursor: pointer;
+}
+
+.discounted-price {
+  color: #27ae60;
+  font-weight: bold;
+}
+
+.item-original-price {
+  font-size: 0.75rem;
+  text-decoration: line-through;
+  color: #95a5a6;
+  margin-bottom: 2px;
 }
 
 .submit-btn {

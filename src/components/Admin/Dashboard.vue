@@ -25,43 +25,43 @@
           <li>
             <a href="#" @click.prevent="handleNavClick('securite')" :class="{ active: activeView === 'securite' }">
               <span class="icon">📊</span>
-              <span>Dashboard</span>
+              <span>Tableau de Bord</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('crud-employeur')" :class="{ active: activeView === 'crud-employeur' }">
               <span class="icon">👥</span>
-              <span>CRUD Employeur</span>
+              <span>Gestion des Employés</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('crud-admin')" :class="{ active: activeView === 'crud-admin' }">
               <span class="icon">👤</span>
-              <span>CRUD Admin</span>
+              <span>Gestion des Administrateurs</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('crud-category')" :class="{ active: activeView === 'crud-category' }">
               <span class="icon">📁</span>
-              <span>CRUD Catégorie</span>
+              <span>Catégories du Menu</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('crud-table')" :class="{ active: activeView === 'crud-table' }">
               <span class="icon">🪑</span>
-              <span>CRUD Table</span>
+              <span>Gestion des Tables</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('crud-produit')" :class="{ active: activeView === 'crud-produit' }">
-              <span class="icon">📦</span>
-              <span>CRUD Produit/Ingrédient</span>
+              <span class="icon">🍴</span>
+              <span>Carte des Plats</span>
             </a>
           </li>
           <li>
             <a href="#" @click.prevent="handleNavClick('historique-commande')" :class="{ active: activeView === 'historique-commande' }">
               <span class="icon">📋</span>
-              <span>Historique Commande</span>
+              <span>Historique des Commandes</span>
             </a>
           </li>
           <li>
@@ -79,7 +79,7 @@
           <li>
             <a href="#" @click.prevent="handleNavClick('gestion-stock')" :class="{ active: activeView === 'gestion-stock' }">
               <span class="icon">📦</span>
-              <span>Gestion des Stock</span>
+              <span>Gestion des Stocks</span>
             </a>
           </li>
         </ul>
@@ -169,16 +169,16 @@ const roleLabel = computed(() => {
 
 const getViewTitle = () => {
   const titles = {
-    'crud-employeur': 'CRUD Employeur',
-    'crud-admin': 'CRUD Admin',
-    'crud-category': 'CRUD Catégorie',
-    'crud-table': 'CRUD Table',
-    'crud-produit': 'CRUD Produit/Ingrédient',
-    'securite': 'Dashboard',
-    'historique-commande': 'Historique Commande',
+    'crud-employeur': 'Gestion des Employés',
+    'crud-admin': 'Gestion des Administrateurs',
+    'crud-category': 'Catégories du Menu',
+    'crud-table': 'Gestion des Tables',
+    'crud-produit': 'Carte des Plats',
+    'securite': 'Tableau de Bord',
+    'historique-commande': 'Historique des Commandes',
     'historique-jour': 'Consommation Ingrédients',
     'consommation-produits': 'Consommation Produits',
-    'gestion-stock': 'Gestion des Stock'
+    'gestion-stock': 'Gestion des Stocks'
   }
   return titles[activeView.value] || 'Dashboard'
 }

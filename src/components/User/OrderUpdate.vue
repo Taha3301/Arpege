@@ -91,17 +91,52 @@
               <div class="item-info">
                 <span class="item-name">{{ item.product.name }}</span>
                 <span class="item-price">{{ formatPrice(item.product.price) }} × {{ item.quantity }}</span>
+
+                <!-- Individual Discount Toggle (Only if global is off) -->
+                <div v-if="!isGlobalDiscount" class="item-discount-toggle">
+                  <label class="switch-label">
+                    <input 
+                      type="checkbox" 
+                      v-model="item.hasDiscount"
+                    >
+                    <span class="switch-text">Remise 16.7%</span>
+                  </label>
+                </div>
               </div>
               <div class="item-total">
-                {{ formatPrice(item.product.price * item.quantity) }}
+                <div v-if="item.hasDiscount && !isGlobalDiscount" class="item-original-price">
+                  {{ formatPrice(item.product.price * item.quantity) }}
+                </div>
+                <div :class="{ 'discounted-price': item.hasDiscount && !isGlobalDiscount }">
+                  {{ formatPrice(item.hasDiscount && !isGlobalDiscount ? (item.product.price * item.quantity * (1 - ORDER_PERCENTAGE / 100)) : (item.product.price * item.quantity)) }}
+                </div>
               </div>
               <button @click="removeItem(item.product.id)" class="remove-btn">×</button>
             </div>
           </div>
 
           <div class="order-total">
+            <div class="discount-settings">
+              <label class="global-discount-toggle">
+                <input type="checkbox" v-model="isGlobalDiscount">
+                <span class="toggle-text">Appliquer remise 16.7% sur TOUTE la commande</span>
+              </label>
+            </div>
+
+            <div class="total-row subtotal">
+              <span>Total Brut:</span>
+              <span class="subtotal-amount">{{ formatPrice(totalBeforeDecrease) }}</span>
+            </div>
+            <div v-if="isGlobalDiscount" class="total-row discount">
+              <span>Remise Globale ({{ ORDER_PERCENTAGE }}%):</span>
+              <span class="discount-amount">- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
+            </div>
+            <div v-else-if="totalDiscountAmount > 0" class="total-row discount">
+              <span>Total Remises:</span>
+              <span class="discount-amount">- {{ formatPrice(totalDiscountAmount) }}</span>
+            </div>
             <div class="total-row">
-              <span>Total:</span>
+              <span>Total à payer:</span>
               <span class="total-amount">{{ formatPrice(totalAmount) }}</span>
             </div>
           </div>
@@ -121,6 +156,16 @@
             class="pay-btn"
           >
             {{ paying ? 'Paiement...' : '💰 Payer' }}
+          </button>
+
+          <!-- Ticket Printing Button -->
+          <button 
+            v-if="currentOrderId"
+            @click="printTicket"
+            class="print-btn"
+            title="Imprimer le ticket de commande"
+          >
+            🖨️ Imprimer Ticket
           </button>
 
           <p v-if="!currentOrderId" class="no-order-warning">
@@ -156,8 +201,20 @@
           </div>
         </div>
 
+        <div class="confirm-total-row subtotal">
+          <span>Total Brut</span>
+          <span>{{ formatPrice(totalBeforeDecrease) }}</span>
+        </div>
+        <div v-if="isGlobalDiscount" class="confirm-total-row discount">
+          <span>Remise Globale ({{ ORDER_PERCENTAGE }}%)</span>
+          <span>- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
+        </div>
+        <div v-else-if="totalDiscountAmount > 0" class="confirm-total-row discount">
+          <span>Total Remises</span>
+          <span>- {{ formatPrice(totalDiscountAmount) }}</span>
+        </div>
         <div class="confirm-total-row">
-          <span>Total</span>
+          <span>Total à payer</span>
           <span class="confirm-total-amount">{{ formatPrice(totalAmount) }}</span>
         </div>
 
@@ -223,6 +280,8 @@ const orderStatus = ref('pending')
 const message = ref('')
 const messageType = ref('')
 const originalProductIds = ref(new Set())
+const ORDER_PERCENTAGE = 16.7
+const isGlobalDiscount = ref(true)
 
 const showConfirmModal = ref(false)
 const confirmMode = ref('update') // 'update' | 'pay'
@@ -234,10 +293,26 @@ const filteredProducts = computed(() => {
   return products.value.filter(p => p.category_id === selectedCategory.value)
 })
 
-const totalAmount = computed(() => {
+const totalBeforeDecrease = computed(() => {
   return orderItems.value.reduce((sum, item) => {
     return sum + (item.product.price * item.quantity)
   }, 0)
+})
+
+const totalDiscountAmount = computed(() => {
+  if (isGlobalDiscount.value) {
+    return totalBeforeDecrease.value * (ORDER_PERCENTAGE / 100)
+  }
+  return orderItems.value.reduce((sum, item) => {
+    if (item.hasDiscount) {
+      return sum + (item.product.price * item.quantity * (ORDER_PERCENTAGE / 100))
+    }
+    return sum
+  }, 0)
+})
+
+const totalAmount = computed(() => {
+  return totalBeforeDecrease.value - totalDiscountAmount.value
 })
 
 const fetchProducts = async () => {
@@ -332,7 +407,8 @@ const increaseQuantity = (productId) => {
     orderItems.value.push({ 
       product, 
       quantity: 1,
-      originalQuantity: 0 
+      originalQuantity: 0,
+      hasDiscount: true
     })
   }
 }
@@ -382,6 +458,12 @@ const loadExistingOrder = async () => {
     if (data.success && data.data) {
       currentOrderId.value = data.data.id
       orderStatus.value = data.data.status || 'pending'
+      
+      // Restore global discount state
+      // If percent_decrease is > 0, we assume it's global if it matches ORDER_PERCENTAGE
+      // or we can just trust the API's percent_decrease for the order.
+      isGlobalDiscount.value = (Number(data.data.percent_decrease) > 0)
+
       const items = Array.isArray(data.data.items) ? data.data.items : []
 
       // Map existing items to current products list
@@ -391,7 +473,8 @@ const loadExistingOrder = async () => {
         return {
           product,
           quantity: Number(item.quantity) || 0,
-          originalQuantity: Number(item.quantity) || 0 // Store original confirmed quantity
+          originalQuantity: Number(item.quantity) || 0, // Store original confirmed quantity
+          hasDiscount: Number(item.percent_decrease) > 0
         }
       }).filter(Boolean)
 
@@ -448,12 +531,19 @@ const submitOrder = async () => {
     
     const orderData = {
       table_id: props.selectedTable.id,
-      items: orderItems.value.map(item => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        price: item.product.price
-      })),
-      total: totalAmount.value
+      items: orderItems.value.map(item => {
+        const hasDiscount = isGlobalDiscount.value || item.hasDiscount
+        return {
+          product_id: item.product.id,
+          quantity: item.quantity,
+          price: hasDiscount ? (item.product.price * (1 - ORDER_PERCENTAGE / 100)) : item.product.price,
+          percent_decrease: hasDiscount ? ORDER_PERCENTAGE : 0,
+          total_before_decrease: item.product.price * item.quantity
+        }
+      }),
+      total: totalAmount.value,
+      percent_decrease: isGlobalDiscount.value ? ORDER_PERCENTAGE : 0,
+      total_before_decrease: totalBeforeDecrease.value
     }
     
     // Always include employee_id if it exists (even if 0, though unlikely)
@@ -583,6 +673,138 @@ const payOrder = async () => {
     paying.value = false
   }
 }
+
+const printTicket = () => {
+  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  if (!printWindow) {
+    showMessage('Veuillez autoriser les fenêtres surgissantes pour imprimer le ticket', 'error');
+    return;
+  }
+  
+  const itemsHtml = orderItems.value.map(item => `
+    <tr>
+      <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
+        <div style="font-weight: bold;">${item.product.name}</div>
+        <div style="font-size: 0.8rem; color: #666;">
+          ${item.quantity} x ${formatPrice(item.product.price)}
+          ${item.hasDiscount || isGlobalDiscount.value ? ` <span style="color: #e74c3c;">(-${ORDER_PERCENTAGE}%)</span>` : ''}
+        </div>
+      </td>
+      <td style="text-align: right; vertical-align: middle; padding: 8px 0; border-bottom: 1px solid #eee; font-weight: bold;">
+        ${formatPrice(
+          (item.hasDiscount || isGlobalDiscount.value) 
+            ? (item.product.price * item.quantity * (1 - ORDER_PERCENTAGE / 100)) 
+            : (item.product.price * item.quantity)
+        )}
+      </td>
+    </tr>
+  `).join('');
+
+  const ticketHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Ticket - Table ${props.selectedTable?.table_number}</title>
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          width: 72mm; 
+          margin: 0 auto; 
+          padding: 10px; 
+          color: #333; 
+          line-height: 1.4;
+        }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 15px; }
+        .logo { font-size: 24px; font-weight: 800; letter-spacing: 2px; margin: 0; color: #000; }
+        .info { font-size: 13px; margin: 4px 0; font-weight: 500; }
+        .divider { border-top: 1px dashed #000; margin: 15px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        .totals { margin-top: 15px; }
+        .total-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
+        .total-row.final { 
+          margin-top: 10px; 
+          padding-top: 10px; 
+          border-top: 2px solid #000; 
+          font-weight: 800; 
+          font-size: 18px; 
+        }
+        .footer { 
+          text-align: center; 
+          margin-top: 30px; 
+          font-size: 12px; 
+          font-weight: 600;
+          border-top: 1px solid #eee;
+          padding-top: 15px;
+        }
+        .qr-placeholder {
+          margin: 20px auto;
+          width: 80px;
+          height: 80px;
+          border: 1px solid #eee;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          color: #999;
+        }
+        @media print {
+          body { width: 100%; box-sizing: border-box; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1 class="logo">ARPEGE</h1>
+        <div class="info">RESTAURANT - BAR</div>
+        <div class="divider"></div>
+        <div class="info">Table: <b>${props.selectedTable?.table_number}</b></div>
+        <div class="info">Commerçant: <b>${props.employeeId || 'Staff'}</b></div>
+        <div class="info">Date: ${new Date().toLocaleString('fr-FR')}</div>
+        <div class="info">ID: #${currentOrderId.value || 'N/A'}</div>
+      </div>
+      
+      <table>
+        ${itemsHtml}
+      </table>
+      
+      <div class="totals">
+        <div class="total-row">
+          <span>Total Brut:</span>
+          <span>${formatPrice(totalBeforeDecrease.value)}</span>
+        </div>
+        ${totalDiscountAmount.value > 0 ? `
+          <div class="total-row" style="color: #e74c3c;">
+            <span>Remises:</span>
+            <span>- ${formatPrice(totalDiscountAmount.value)}</span>
+          </div>
+        ` : ''}
+        <div class="total-row final">
+          <span>NET À PAYER:</span>
+          <span>${formatPrice(totalAmount.value)}</span>
+        </div>
+      </div>
+      
+      <div class="footer">
+        <div>MERCI DE VOTRE VISITE</div>
+        <div style="margin-top: 5px; font-size: 10px;">Suivez-nous sur Instagram @arpege_resto</div>
+      </div>
+      
+      <script>
+        window.onload = () => {
+          window.print();
+          window.onafterprint = () => window.close();
+          // Fallback if onafterprint doesn't fire
+          setTimeout(() => window.close(), 1000);
+        };
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  printWindow.document.write(ticketHtml);
+  printWindow.document.close();
+};
 
 const goBack = () => {
   emit('go-back')
@@ -1224,7 +1446,8 @@ onMounted(async () => {
   }
 
   .submit-btn,
-  .pay-btn {
+  .pay-btn,
+  .print-btn {
     padding: 0.875rem;
     font-size: 1rem;
   }
@@ -1337,7 +1560,8 @@ onMounted(async () => {
   }
 
   .submit-btn,
-  .pay-btn {
+  .pay-btn,
+  .print-btn {
     padding: 0.75rem;
     font-size: 0.95rem;
   }
@@ -1357,6 +1581,107 @@ onMounted(async () => {
   font-size: 0.85rem;
   color: #e74c3c;
   font-style: italic;
+}
+.total-row.subtotal,
+.total-row.discount {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: #7f8c8d;
+}
+
+.total-row.discount .discount-amount {
+  color: #e74c3c;
+}
+
+.discount-settings {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed #ddd;
+}
+
+.global-discount-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.global-discount-toggle input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.item-discount-toggle {
+  margin-top: 0.5rem;
+}
+
+.switch-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #7f8c8d;
+}
+
+.switch-label input {
+  cursor: pointer;
+}
+
+.discounted-price {
+  color: #27ae60;
+  font-weight: bold;
+}
+
+.item-original-price {
+  font-size: 0.75rem;
+  text-decoration: line-through;
+  color: #95a5a6;
+  margin-bottom: 2px;
+}
+
+.confirm-total-row.subtotal,
+.confirm-total-row.discount {
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  color: #7f8c8d;
+}
+
+.confirm-total-row.discount span:last-child {
+  color: #e74c3c;
+}
+
+.print-btn {
+  width: 100%;
+  padding: 1rem;
+  background: #34495e;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1rem;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.print-btn:hover {
+  background: #2c3e50;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.print-btn:active {
+  transform: translateY(0);
 }
 </style>
 

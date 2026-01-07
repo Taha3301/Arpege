@@ -11,6 +11,7 @@
         <thead>
           <tr>
             <th>ID</th>
+            <th>Photo</th>
             <th>Numéro de Table</th>
             <th>Statut</th>
             <th>Actions</th>
@@ -18,13 +19,19 @@
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="4" class="loading">Chargement...</td>
+            <td colspan="5" class="loading">Chargement...</td>
           </tr>
           <tr v-else-if="tables.length === 0">
-            <td colspan="4" class="empty">Aucune table trouvée</td>
+            <td colspan="5" class="empty">Aucune table trouvée</td>
           </tr>
           <tr v-else v-for="table in tables" :key="table.id">
             <td>{{ table.id }}</td>
+            <td class="table-photo-cell">
+              <div v-if="table.image" class="table-photo-preview">
+                <img :src="table.image" alt="Table Photo" />
+              </div>
+              <div v-else class="no-photo">-</div>
+            </td>
             <td>{{ table.table_number }}</td>
             <td>
               <span :class="['badge', getStatusClass(table.status)]">
@@ -61,6 +68,27 @@
               <option value="Réservée">Réservée</option>
               <option value="indisponible">Indisponible</option>
             </select>
+          </div>
+
+          <div class="form-group photo-upload-section">
+            <label>Photo de la table</label>
+            <div v-if="formData.image" class="photo-preview">
+              <img :src="formData.image" alt="Preview" />
+              <button type="button" @click="removePhoto" class="remove-preview-btn" title="Supprimer la photo">&times;</button>
+            </div>
+            <div v-else class="photo-placeholder" @click="triggerPhotoInput">
+              <span>Cliquez pour ajouter une photo</span>
+            </div>
+            <input 
+              type="file" 
+              ref="photoInput" 
+              @change="handlePhotoUpload" 
+              accept="image/*" 
+              class="photo-input" 
+            />
+            <button type="button" @click="triggerPhotoInput" class="btn btn-secondary photo-upload-btn">
+              {{ formData.image ? 'Changer la photo' : 'Choisir une photo' }}
+            </button>
           </div>
 
           <div class="modal-footer">
@@ -114,67 +142,25 @@ const messageType = ref('')
 const formData = ref({
   table_number: '',
   status: 'disponible',
-  photoPreview: null,
-  photoFile: null
+  image: null
 })
 
 const photoInput = ref(null)
-
-// IndexedDB database name and version
-const DB_NAME = 'TablesPhotosDB'
-const DB_VERSION = 1
-const STORE_NAME = 'table_photos'
-let db = null
-
-// Initialize IndexedDB
-const initDB = () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    
-    request.onerror = () => {
-      console.error('IndexedDB error:', request.error)
-      reject(request.error)
-    }
-    
-    request.onsuccess = () => {
-      db = request.result
-      resolve(db)
-    }
-    
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const objectStore = database.createObjectStore(STORE_NAME, { keyPath: 'tableId' })
-        objectStore.createIndex('tableId', 'tableId', { unique: true })
-      }
-    }
-  })
-}
 
 const fetchTables = async () => {
   loading.value = true
   try {
     const response = await fetch(API_URL)
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     const data = await response.json()
-    
     if (data.success) {
       tables.value = Array.isArray(data.data) ? data.data : []
-      // Load photos for all tables
-      if (tables.value.length > 0) {
-        await Promise.all(tables.value.map(table => loadTablePhoto(table.id)))
-      }
     } else {
       showMessage(data.message || 'Erreur lors du chargement des tables', 'error')
       tables.value = []
     }
   } catch (error) {
-    console.error('Fetch error:', error)
-    showMessage('Erreur de connexion: ' + error.message, 'error')
+    showMessage('Erreur: ' + error.message, 'error')
     tables.value = []
   } finally {
     loading.value = false
@@ -186,37 +172,17 @@ const openAddModal = () => {
   formData.value = { 
     table_number: '', 
     status: 'disponible',
-    photoPreview: null,
-    photoFile: null
-  }
-  if (photoInput.value) {
-    photoInput.value.value = ''
+    image: null
   }
   showModal.value = true
 }
 
 const openEditModal = (table) => {
   editingTable.value = table
-  // Map status from database to form value
-  const statusMap = {
-    'available': 'available',
-    'occupied': 'occupied',
-    'reserved': 'reserved',
-    'unavailable': 'unavailable',
-    'disponible': 'available',
-    'occupée': 'occupied',
-    'réservée': 'reserved',
-    'indisponible': 'unavailable'
-  }
-  
   formData.value = {
-    table_number: String(table.table_number), // Convert to string
-    status: table.status || 'disponible', // Use status directly from database
-    photoPreview: null,
-    photoFile: null
-  }
-  if (photoInput.value) {
-    photoInput.value.value = ''
+    table_number: String(table.table_number),
+    status: table.status || 'disponible',
+    image: table.image || null
   }
   showModal.value = true
 }
@@ -227,11 +193,7 @@ const closeModal = () => {
   formData.value = { 
     table_number: '', 
     status: 'disponible',
-    photoPreview: null,
-    photoFile: null
-  }
-  if (photoInput.value) {
-    photoInput.value.value = ''
+    image: null
   }
 }
 
@@ -243,8 +205,6 @@ const saveTable = async () => {
       : API_URL
     
     const method = editingTable.value ? 'PUT' : 'POST'
-    
-    // Ensure table_number is a string and trim it
     const tableNumber = String(formData.value.table_number || '').trim()
     
     if (!tableNumber) {
@@ -255,7 +215,8 @@ const saveTable = async () => {
     
     const requestData = {
       table_number: tableNumber,
-      status: formData.value.status || 'disponible'
+      status: formData.value.status || 'disponible',
+      image: formData.value.image
     }
     
     const response = await fetch(url, {
@@ -272,19 +233,6 @@ const saveTable = async () => {
     const data = await response.json()
     
     if (data.success) {
-      // Save photo if one was uploaded
-      const tableId = editingTable.value ? editingTable.value.id : data.data?.id
-      if (tableId && formData.value.photoFile) {
-        try {
-          await saveTablePhoto(tableId, formData.value.photoFile)
-          // Update cache
-          await loadTablePhoto(tableId)
-        } catch (error) {
-          console.error('Error saving photo:', error)
-          showMessage('Table enregistrée mais erreur lors de la sauvegarde de la photo', 'error')
-        }
-      }
-      
       showMessage(editingTable.value ? 'Table modifiée avec succès' : 'Table ajoutée avec succès', 'success')
       closeModal()
       fetchTables()
@@ -292,7 +240,6 @@ const saveTable = async () => {
       showMessage(data.message || 'Erreur lors de l\'enregistrement', 'error')
     }
   } catch (error) {
-    console.error('Error:', error)
     showMessage('Erreur: ' + (error.message || 'Erreur de connexion'), 'error')
   } finally {
     saving.value = false
@@ -347,13 +294,7 @@ const deleteTable = async () => {
     
     const data = await response.json()
     console.log('Delete response data:', data)
-    
     if (data.success) {
-      // Remove photo when table is deleted
-      if (tableToDelete.value?.id) {
-        await removeTablePhoto(tableToDelete.value.id)
-      }
-      
       showMessage('Table supprimée avec succès', 'success')
       cancelDelete()
       fetchTables()
@@ -396,205 +337,38 @@ const getStatusClass = (status) => {
   return classes[status?.toLowerCase()] || 'badge-default'
 }
 
-// Photo handling functions
+const triggerPhotoInput = () => {
+  if (photoInput.value) {
+    photoInput.value.click()
+  }
+}
+
 const handlePhotoUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
   
-  // Validate file type
   if (!file.type.startsWith('image/')) {
     showMessage('Veuillez sélectionner un fichier image', 'error')
     return
   }
   
-  // Validate file size (max 5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    showMessage('L\'image ne doit pas dépasser 5MB', 'error')
+  if (file.size > 2 * 1024 * 1024) {
+    showMessage('L\'image ne doit pas dépasser 2MB', 'error')
     return
   }
   
-  // Read file as base64
   const reader = new FileReader()
   reader.onload = (e) => {
-    formData.value.photoPreview = e.target.result
-    formData.value.photoFile = file
-  }
-  reader.onerror = () => {
-    showMessage('Erreur lors de la lecture de l\'image', 'error')
+    formData.value.image = e.target.result
   }
   reader.readAsDataURL(file)
 }
 
 const removePhoto = () => {
-  formData.value.photoPreview = null
-  formData.value.photoFile = null
+  formData.value.image = null
   if (photoInput.value) {
     photoInput.value.value = ''
   }
-}
-
-const saveTablePhoto = async (tableId, file) => {
-  if (!db) {
-    await initDB()
-  }
-  
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      try {
-        // Get file extension
-        const fileName = file.name || `table_${tableId}.jpg`
-        const fileExtension = fileName.split('.').pop() || 'jpg'
-        const finalFileName = `table_${tableId}.${fileExtension}`
-        
-        // Store in IndexedDB
-        const photoData = {
-          tableId: tableId,
-          imageData: e.target.result, // base64 string
-          fileName: finalFileName,
-          mimeType: file.type || 'image/jpeg',
-          uploadedAt: new Date().toISOString()
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readwrite')
-        const store = transaction.objectStore(STORE_NAME)
-        const request = store.put(photoData)
-        
-        request.onsuccess = async () => {
-          console.log(`Photo saved for table ${tableId} in IndexedDB`)
-          console.log(`Photo filename: ${finalFileName}`)
-          // Photo is stored in IndexedDB with filename: table_{id}.{ext}
-          // Use download button to export to tables folder if needed
-          resolve()
-        }
-        
-        request.onerror = () => {
-          console.error('Error saving photo to IndexedDB:', request.error)
-          reject(request.error)
-        }
-      } catch (error) {
-        console.error('Error processing photo:', error)
-        reject(error)
-      }
-    }
-    reader.onerror = () => {
-      reject(new Error('Error reading file'))
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
-// Save photo to file system (tables folder)
-const savePhotoToFileSystem = async (tableId, file, fileName) => {
-  // Check if File System Access API is supported
-  if (!window.showDirectoryPicker) {
-    console.log('File System Access API not supported, skipping file system save')
-    return
-  }
-  
-  try {
-    // Request directory access (user will select the tables folder)
-    // For automatic saving, we'll use a download approach instead
-    // Convert file to blob
-    const blob = file
-    
-    // Create download link to save in tables folder
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = fileName
-    link.style.display = 'none'
-    document.body.appendChild(link)
-    
-    // Note: This will download to user's default download folder
-    // For actual project folder, user would need to use File System Access API manually
-    // For now, we'll store in IndexedDB and provide download option
-    
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    console.error('Error saving to file system:', error)
-    throw error
-  }
-}
-
-const getTablePhoto = async (tableId) => {
-  if (!tableId) return null
-  
-  if (!db) {
-    try {
-      await initDB()
-    } catch (error) {
-      console.error('Error initializing DB:', error)
-      return null
-    }
-  }
-  
-  return new Promise((resolve) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.get(tableId)
-    
-    request.onsuccess = () => {
-      const result = request.result
-      resolve(result ? result.imageData : null)
-    }
-    
-    request.onerror = () => {
-      console.error('Error getting photo:', request.error)
-      resolve(null)
-    }
-  })
-}
-
-// Reactive photo URLs cache
-const photoCache = ref({})
-
-const getTablePhotoSync = (tableId) => {
-  return photoCache.value[tableId] || null
-}
-
-const loadTablePhoto = async (tableId) => {
-  if (!tableId) return
-  const photo = await getTablePhoto(tableId)
-  if (photo) {
-    photoCache.value[tableId] = photo
-  }
-}
-
-const removeTablePhoto = async (tableId) => {
-  if (!tableId) return
-  
-  if (!db) {
-    try {
-      await initDB()
-    } catch (error) {
-      console.error('Error initializing DB:', error)
-      showMessage('Erreur lors de la suppression de la photo', 'error')
-      return
-    }
-  }
-  
-  return new Promise((resolve) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.delete(tableId)
-    
-    request.onsuccess = () => {
-      // Remove from cache
-      delete photoCache.value[tableId]
-      showMessage('Photo supprimée avec succès', 'success')
-      // Refresh tables to update UI
-      fetchTables()
-      resolve()
-    }
-    
-    request.onerror = () => {
-      console.error('Error deleting photo:', request.error)
-      showMessage('Erreur lors de la suppression de la photo', 'error')
-      resolve()
-    }
-  })
 }
 
 const showMessage = (msg, type) => {
@@ -605,71 +379,8 @@ const showMessage = (msg, type) => {
   }, 3000)
 }
 
-// Download photo function
-const downloadTablePhoto = async (tableId) => {
-  if (!tableId) return
-  
-  if (!db) {
-    try {
-      await initDB()
-    } catch (error) {
-      console.error('Error initializing DB:', error)
-      showMessage('Erreur lors du téléchargement de la photo', 'error')
-      return
-    }
-  }
-  
-  const transaction = db.transaction([STORE_NAME], 'readonly')
-  const store = transaction.objectStore(STORE_NAME)
-  const request = store.get(tableId)
-  
-  request.onsuccess = () => {
-    const photoData = request.result
-    if (!photoData) {
-      showMessage('Aucune photo trouvée pour cette table', 'error')
-      return
-    }
-    
-    // Convert base64 to blob
-    const byteCharacters = atob(photoData.imageData.split(',')[1])
-    const byteNumbers = new Array(byteCharacters.length)
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i)
-    }
-    const byteArray = new Uint8Array(byteNumbers)
-    const blob = new Blob([byteArray], { type: photoData.mimeType })
-    
-    // Create download link
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = photoData.fileName || `table_${tableId}.jpg`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
-    showMessage('Photo téléchargée avec succès', 'success')
-  }
-  
-  request.onerror = () => {
-    console.error('Error getting photo for download:', request.error)
-    showMessage('Erreur lors du téléchargement de la photo', 'error')
-  }
-}
-
-onMounted(async () => {
-  // Initialize IndexedDB
-  try {
-    await initDB()
-    console.log('IndexedDB initialized successfully')
-  } catch (error) {
-    console.error('Failed to initialize IndexedDB:', error)
-    showMessage('Erreur d\'initialisation de la base de données locale', 'error')
-  }
-  
-  // Fetch tables
-  await fetchTables()
+onMounted(() => {
+  fetchTables()
 })
 </script>
 
@@ -959,22 +670,30 @@ onMounted(async () => {
   border-color: #3498db;
 }
 
-.photo-upload-section {
+.photo-placeholder {
+  width: 200px;
+  height: 200px;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #95a5a6;
+  transition: all 0.3s ease;
+}
+
+.photo-placeholder:hover {
+  border-color: #3498db;
+  color: #3498db;
 }
 
 .photo-preview {
   position: relative;
   width: 200px;
   height: 200px;
-  border: 2px dashed #ddd;
   border-radius: 8px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .photo-preview img {
@@ -983,48 +702,12 @@ onMounted(async () => {
   object-fit: cover;
 }
 
-.remove-preview-btn {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background: rgba(231, 76, 60, 0.9);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  font-size: 1.5rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.remove-preview-btn:hover {
-  background: rgba(192, 57, 43, 1);
-}
-
 .photo-input {
   display: none;
 }
 
 .photo-upload-btn {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  background: #3498db;
-  color: white;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.3s ease;
-  font-size: 0.95rem;
-  width: fit-content;
-}
-
-.photo-upload-btn:hover {
-  background: #2980b9;
+  margin-top: 0.5rem;
 }
 
 .modal-footer {

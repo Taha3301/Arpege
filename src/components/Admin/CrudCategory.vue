@@ -12,22 +12,20 @@
           <tr>
             <th>ID</th>
             <th>Nom</th>
-            <th>Description</th>
             <th>Date de Création</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="5" class="loading">Chargement...</td>
+            <td colspan="4" class="loading">Chargement...</td>
           </tr>
           <tr v-else-if="categories.length === 0">
-            <td colspan="5" class="empty">Aucune catégorie trouvée</td>
+            <td colspan="4" class="empty">Aucune catégorie trouvée</td>
           </tr>
           <tr v-else v-for="category in categories" :key="category.id">
             <td>{{ category.id }}</td>
             <td>{{ category.name }}</td>
-            <td>{{ category.description && category.description.trim() ? category.description : '-' }}</td>
             <td>{{ formatDate(category.created_at) }}</td>
             <td class="actions">
               <button @click="openEditModal(category)" class="btn btn-edit">Modifier</button>
@@ -49,10 +47,6 @@
           <div class="form-group">
             <label>Nom *</label>
             <input v-model="formData.name" type="text" required />
-          </div>
-          <div class="form-group">
-            <label>Description</label>
-            <textarea v-model="formData.description" rows="4"></textarea>
           </div>
           <div class="modal-footer">
             <button type="button" @click="closeModal" class="btn btn-cancel">Annuler</button>
@@ -103,8 +97,7 @@ const message = ref('')
 const messageType = ref('')
 
 const formData = ref({
-  name: '',
-  description: ''
+  name: ''
 })
 
 const fetchCategories = async () => {
@@ -136,15 +129,14 @@ const fetchCategories = async () => {
 
 const openAddModal = () => {
   editingCategory.value = null
-  formData.value = { name: '', description: '' }
+  formData.value = { name: '' }
   showModal.value = true
 }
 
 const openEditModal = (category) => {
   editingCategory.value = category
   formData.value = {
-    name: category.name,
-    description: (category.description && category.description.trim()) ? category.description : ''
+    name: category.name
   }
   showModal.value = true
 }
@@ -152,7 +144,7 @@ const openEditModal = (category) => {
 const closeModal = () => {
   showModal.value = false
   editingCategory.value = null
-  formData.value = { name: '', description: '' }
+  formData.value = { name: '' }
 }
 
 const saveCategory = async () => {
@@ -164,16 +156,9 @@ const saveCategory = async () => {
     
     const method = editingCategory.value ? 'PUT' : 'POST'
     
-    // Prepare data - send description only if it has content, otherwise send empty string
+    // Prepare data
     const requestData = {
       name: formData.value.name.trim()
-    }
-    
-    // Only include description if it has content (API handles empty strings)
-    if (formData.value.description && formData.value.description.trim()) {
-      requestData.description = formData.value.description.trim()
-    } else {
-      requestData.description = ''
     }
     
     const response = await fetch(url, {

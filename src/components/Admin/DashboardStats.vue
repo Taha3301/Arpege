@@ -223,7 +223,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-const API_BASE = 'https://arpege.atwebpages.com/api/dashboard.php'
+import { API_BASE_URL } from '../../config/api.js'
+
+const API_BASE = `${API_BASE_URL}/dashboard.php`
 
 // State
 const loading = ref(true)
