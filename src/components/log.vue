@@ -10,6 +10,7 @@ import { getApiUrl, API_ENDPOINTS } from '../config/api.js'
 const code = ref('')
 const message = ref('')
 const isLoading = ref(false)
+const showSecurityModal = ref(false)
 
 const API_URL = getApiUrl(API_ENDPOINTS.USER)
 
@@ -70,7 +71,11 @@ const handleConfirm = async () => {
     }
   } catch (error) {
     console.error('Login error:', error)
-    message.value = 'Connection error. Please try again.'
+    if (error.name === 'TypeError' || error.message.includes('fetch')) {
+      showSecurityModal.value = true
+    } else {
+      message.value = 'Connection error. Please try again.'
+    }
     isLoading.value = false
     
     setTimeout(() => {
@@ -107,6 +112,31 @@ const handleConfirm = async () => {
         >
           {{ isLoading ? 'Processing...' : 'Confirm' }}
         </button>
+      </div>
+    </div>
+
+    <!-- Security Troubleshooting Modal -->
+    <div v-if="showSecurityModal" class="modal-overlay">
+      <div class="security-modal">
+        <h3>🔒 Problème de Connexion Sécurisée</h3>
+        <p>Votre navigateur bloque la connexion car le certificat de sécurité du serveur n'est pas reconnu.</p>
+        
+        <div class="steps">
+          <p><strong>Pour corriger cela :</strong></p>
+          <ol>
+            <li>Cliquez sur le bouton ci-dessous pour ouvrir le serveur.</li>
+            <li>Cliquez sur <strong>"Paramètres Avancés"</strong>.</li>
+            <li>Cliquez sur <strong>"Continuer vers le site (non sécurisé)"</strong>.</li>
+            <li>Revenez ici et essayez de vous reconnecter.</li>
+          </ol>
+        </div>
+
+        <div class="modal-actions">
+          <a :href="API_URL" target="_blank" class="fix-btn" @click="showSecurityModal = false">
+            Ouvrir la page de sécurité
+          </a>
+          <button @click="showSecurityModal = false" class="close-modal-btn">Annuler</button>
+        </div>
       </div>
     </div>
 
@@ -325,6 +355,100 @@ const handleConfirm = async () => {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/* SECURITY MODAL */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.security-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 450px;
+  color: #333;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: modalIn 0.3s ease-out;
+}
+
+@keyframes modalIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.security-modal h3 {
+  margin-top: 0;
+  color: #e74c3c;
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+}
+
+.security-modal p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #555;
+}
+
+.steps {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 10px;
+  margin: 1.5rem 0;
+  border-left: 4px solid #e74c3c;
+}
+
+.steps ol {
+  padding-left: 1.2rem;
+  margin-top: 0.5rem;
+}
+
+.steps li {
+  margin-bottom: 0.5rem;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.fix-btn {
+  background: #e74c3c;
+  color: white;
+  text-decoration: none;
+  padding: 0.8rem;
+  border-radius: 10px;
+  text-align: center;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.fix-btn:hover {
+  background: #c0392b;
+  transform: translateY(-2px);
+}
+
+.close-modal-btn {
+  background: transparent;
+  border: 1px solid #ddd;
+  color: #777;
+  padding: 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.close-modal-btn:hover {
+  background: #f5f5f5;
 }
 
 /* RESPONSIVE (MOBILE) */
