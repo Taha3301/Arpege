@@ -11,6 +11,7 @@
     </div>
 
     <div class="content">
+
       <div class="order-layout">
         <!-- Products Section -->
         <div class="products-section">
@@ -45,7 +46,7 @@
             >
               <div class="product-info">
                 <h3>{{ product.name }}</h3>
-                <p class="product-price">{{ formatPrice(product.price) }}</p>
+                <p class="product-price">{{ formatPrice(props.priceMode === 'menu1' ? product.price : product.price_strangers) }}</p>
                 <p class="product-category">{{ product.category_name || 'Sans catégorie' }}</p>
                 <p v-if="getMaxAvailableForProduct(product) === 0" class="stock-warning">Rupture de stock</p>
                 <p v-else-if="getMaxAvailableForProduct(product) !== Infinity" class="stock-info">
@@ -90,25 +91,11 @@
             >
               <div class="item-info">
                 <span class="item-name">{{ item.product.name }}</span>
-                <span class="item-price">{{ formatPrice(item.product.price) }} × {{ item.quantity }}</span>
-
-                <!-- Individual Discount Toggle (Only if global is off) -->
-                <div v-if="!isGlobalDiscount" class="item-discount-toggle">
-                  <label class="switch-label">
-                    <input 
-                      type="checkbox" 
-                      v-model="item.hasDiscount"
-                    >
-                    <span class="switch-text">Remise 16.7%</span>
-                  </label>
-                </div>
+                <span class="item-price">{{ formatPrice(props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers) }} × {{ item.quantity }}</span>
               </div>
               <div class="item-total">
-                <div v-if="item.hasDiscount && !isGlobalDiscount" class="item-original-price">
-                  {{ formatPrice(item.product.price * item.quantity) }}
-                </div>
-                <div :class="{ 'discounted-price': item.hasDiscount && !isGlobalDiscount }">
-                  {{ formatPrice(item.hasDiscount && !isGlobalDiscount ? (item.product.price * item.quantity * (1 - ORDER_PERCENTAGE / 100)) : (item.product.price * item.quantity)) }}
+                <div>
+                  {{ formatPrice((props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers) * item.quantity) }}
                 </div>
               </div>
               <button @click="removeItem(item.product.id)" class="remove-btn">×</button>
@@ -116,27 +103,12 @@
           </div>
 
           <div class="order-total">
-            <div class="discount-settings">
-              <label class="global-discount-toggle">
-                <input type="checkbox" v-model="isGlobalDiscount">
-                <span class="toggle-text">Appliquer remise 16.7% sur TOUTE la commande</span>
-              </label>
-            </div>
-
             <div class="total-row subtotal">
-              <span>Total Brut:</span>
+              <span>Total :</span>
               <span class="subtotal-amount">{{ formatPrice(totalBeforeDecrease) }}</span>
             </div>
-            <div v-if="isGlobalDiscount" class="total-row discount">
-              <span>Remise Globale ({{ ORDER_PERCENTAGE }}%):</span>
-              <span class="discount-amount">- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
-            </div>
-            <div v-else-if="totalDiscountAmount > 0" class="total-row discount">
-              <span>Total Remises:</span>
-              <span class="discount-amount">- {{ formatPrice(totalDiscountAmount) }}</span>
-            </div>
             <div class="total-row">
-              <span>Total à payer:</span>
+              <span>Total à payer :</span>
               <span class="total-amount">{{ formatPrice(totalAmount) }}</span>
             </div>
           </div>
@@ -197,22 +169,10 @@
           >
             <span class="confirm-item-name">{{ item.product.name }}</span>
             <span class="confirm-item-qty">× {{ item.quantity }}</span>
-            <span class="confirm-item-total">{{ formatPrice(item.product.price * item.quantity) }}</span>
+            <span class="confirm-item-total">{{ formatPrice((props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers) * item.quantity) }}</span>
           </div>
         </div>
 
-        <div class="confirm-total-row subtotal">
-          <span>Total Brut</span>
-          <span>{{ formatPrice(totalBeforeDecrease) }}</span>
-        </div>
-        <div v-if="isGlobalDiscount" class="confirm-total-row discount">
-          <span>Remise Globale ({{ ORDER_PERCENTAGE }}%)</span>
-          <span>- {{ formatPrice(totalBeforeDecrease * (ORDER_PERCENTAGE / 100)) }}</span>
-        </div>
-        <div v-else-if="totalDiscountAmount > 0" class="confirm-total-row discount">
-          <span>Total Remises</span>
-          <span>- {{ formatPrice(totalDiscountAmount) }}</span>
-        </div>
         <div class="confirm-total-row">
           <span>Total à payer</span>
           <span class="confirm-total-amount">{{ formatPrice(totalAmount) }}</span>
@@ -251,6 +211,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
+import qrCodeUrl from '../../assets/cafe_arpege.png'
 
 const props = defineProps({
   selectedTable: {
@@ -260,6 +221,10 @@ const props = defineProps({
   employeeId: {
     type: Number,
     default: null
+  },
+  priceMode: {
+    type: String,
+    default: 'menu1'
   }
 })
 
@@ -280,8 +245,6 @@ const orderStatus = ref('pending')
 const message = ref('')
 const messageType = ref('')
 const originalProductIds = ref(new Set())
-const ORDER_PERCENTAGE = 16.7
-const isGlobalDiscount = ref(true)
 
 const showConfirmModal = ref(false)
 const confirmMode = ref('update') // 'update' | 'pay'
@@ -295,24 +258,13 @@ const filteredProducts = computed(() => {
 
 const totalBeforeDecrease = computed(() => {
   return orderItems.value.reduce((sum, item) => {
-    return sum + (item.product.price * item.quantity)
-  }, 0)
-})
-
-const totalDiscountAmount = computed(() => {
-  if (isGlobalDiscount.value) {
-    return totalBeforeDecrease.value * (ORDER_PERCENTAGE / 100)
-  }
-  return orderItems.value.reduce((sum, item) => {
-    if (item.hasDiscount) {
-      return sum + (item.product.price * item.quantity * (ORDER_PERCENTAGE / 100))
-    }
-    return sum
+    const price = props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers
+    return sum + (price * item.quantity)
   }, 0)
 })
 
 const totalAmount = computed(() => {
-  return totalBeforeDecrease.value - totalDiscountAmount.value
+  return totalBeforeDecrease.value
 })
 
 const fetchProducts = async () => {
@@ -407,8 +359,7 @@ const increaseQuantity = (productId) => {
     orderItems.value.push({ 
       product, 
       quantity: 1,
-      originalQuantity: 0,
-      hasDiscount: true
+      originalQuantity: 0
     })
   }
 }
@@ -459,11 +410,6 @@ const loadExistingOrder = async () => {
       currentOrderId.value = data.data.id
       orderStatus.value = data.data.status || 'pending'
       
-      // Restore global discount state
-      // If percent_decrease is > 0, we assume it's global if it matches ORDER_PERCENTAGE
-      // or we can just trust the API's percent_decrease for the order.
-      isGlobalDiscount.value = (Number(data.data.percent_decrease) > 0)
-
       const items = Array.isArray(data.data.items) ? data.data.items : []
 
       // Map existing items to current products list
@@ -473,8 +419,7 @@ const loadExistingOrder = async () => {
         return {
           product,
           quantity: Number(item.quantity) || 0,
-          originalQuantity: Number(item.quantity) || 0, // Store original confirmed quantity
-          hasDiscount: Number(item.percent_decrease) > 0
+          originalQuantity: Number(item.quantity) || 0 // Store original confirmed quantity
         }
       }).filter(Boolean)
 
@@ -532,17 +477,17 @@ const submitOrder = async () => {
     const orderData = {
       table_id: props.selectedTable.id,
       items: orderItems.value.map(item => {
-        const hasDiscount = isGlobalDiscount.value || item.hasDiscount
-        return {
-          product_id: item.product.id,
-          quantity: item.quantity,
-          price: hasDiscount ? (item.product.price * (1 - ORDER_PERCENTAGE / 100)) : item.product.price,
-          percent_decrease: hasDiscount ? ORDER_PERCENTAGE : 0,
-          total_before_decrease: item.product.price * item.quantity
-        }
+          const price = props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers
+          return {
+            product_id: item.product.id,
+            quantity: item.quantity,
+            price: price,
+            percent_decrease: null,
+            total_before_decrease: price * item.quantity
+          }
       }),
       total: totalAmount.value,
-      percent_decrease: isGlobalDiscount.value ? ORDER_PERCENTAGE : 0,
+      percent_decrease: null,
       total_before_decrease: totalBeforeDecrease.value
     }
     
@@ -675,29 +620,24 @@ const payOrder = async () => {
 }
 
 const printTicket = () => {
-  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  const printWindow = window.open('', '_blank', 'width=450,height=800');
   if (!printWindow) {
     showMessage('Veuillez autoriser les fenêtres surgissantes pour imprimer le ticket', 'error');
     return;
   }
   
   const itemsHtml = orderItems.value.map(item => `
-    <tr>
-      <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
-        <div style="font-weight: bold;">${item.product.name}</div>
-        <div style="font-size: 0.8rem; color: #666;">
-          ${item.quantity} x ${formatPrice(item.product.price)}
-          ${item.hasDiscount || isGlobalDiscount.value ? ` <span style="color: #e74c3c;">(-${ORDER_PERCENTAGE}%)</span>` : ''}
-        </div>
-      </td>
-      <td style="text-align: right; vertical-align: middle; padding: 8px 0; border-bottom: 1px solid #eee; font-weight: bold;">
-        ${formatPrice(
-          (item.hasDiscount || isGlobalDiscount.value) 
-            ? (item.product.price * item.quantity * (1 - ORDER_PERCENTAGE / 100)) 
-            : (item.product.price * item.quantity)
-        )}
-      </td>
-    </tr>
+    <div class="receipt-item">
+      <div class="item-line">
+        <span class="item-name">${item.product.name}</span>
+        <span class="item-total">${formatPrice(
+          (props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers) * item.quantity
+        )}</span>
+      </div>
+      <div class="item-details">
+        ${item.quantity} x ${formatPrice(props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers)}
+      </div>
+    </div>
   `).join('');
 
   const ticketHtml = `
@@ -706,96 +646,114 @@ const printTicket = () => {
     <head>
       <title>Ticket - Table ${props.selectedTable?.table_number}</title>
       <style>
-        @page { size: 80mm auto; margin: 0; }
+        @page { 
+          size: 80mm auto; 
+          margin: 0; 
+        }
         body { 
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          font-family: 'Courier New', Courier, monospace; 
           width: 72mm; 
           margin: 0 auto; 
-          padding: 10px; 
-          color: #333; 
-          line-height: 1.4;
+          padding: 5mm 2mm; 
+          color: #000; 
+          line-height: 1.2;
+          font-size: 12px;
         }
-        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 15px; }
-        .logo { font-size: 24px; font-weight: 800; letter-spacing: 2px; margin: 0; color: #000; }
-        .info { font-size: 13px; margin: 4px 0; font-weight: 500; }
-        .divider { border-top: 1px dashed #000; margin: 15px 0; }
-        table { width: 100%; border-collapse: collapse; }
-        .totals { margin-top: 15px; }
-        .total-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
-        .total-row.final { 
-          margin-top: 10px; 
-          padding-top: 10px; 
-          border-top: 2px solid #000; 
-          font-weight: 800; 
-          font-size: 18px; 
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        
+        .header { margin-bottom: 5mm; }
+        .logo { font-size: 20px; font-weight: 900; margin: 0; text-transform: uppercase; }
+        .store-info { font-size: 11px; margin-top: 2px; }
+        
+        .divider { 
+          border-top: 1px dashed #000; 
+          margin: 3mm 0; 
+          width: 100%;
         }
+        
+        .order-info { margin-bottom: 3mm; font-size: 11px; }
+        
+        .receipt-item { margin-bottom: 2mm; }
+        .item-line { display: flex; justify-content: space-between; align-items: flex-start; }
+        .item-name { flex: 1; padding-right: 2mm; text-transform: uppercase; }
+        .item-total { font-weight: bold; white-space: nowrap; }
+        .item-details { font-size: 11px; color: #333; }
+        .discount-small { font-style: italic; }
+        
+        .totals { margin-top: 4mm; }
+        .total-row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
+        .total-row.grand-total { 
+          margin-top: 2mm;
+          padding-top: 2mm;
+          border-top: 1px solid #000;
+          font-size: 16px;
+          font-weight: 900;
+        }
+        
         .footer { 
-          text-align: center; 
-          margin-top: 30px; 
-          font-size: 12px; 
-          font-weight: 600;
-          border-top: 1px solid #eee;
-          padding-top: 15px;
+          margin-top: 8mm; 
+          font-size: 11px;
+          padding-bottom: 10mm;
         }
-        .qr-placeholder {
-          margin: 20px auto;
-          width: 80px;
-          height: 80px;
-          border: 1px solid #eee;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 10px;
-          color: #999;
-        }
+
         @media print {
-          body { width: 100%; box-sizing: border-box; }
+          body { width: 72mm; }
+          .no-print { display: none; }
         }
       </style>
     </head>
     <body>
-      <div class="header">
+      <div class="header text-center">
         <h1 class="logo">ARPEGE</h1>
-        <div class="info">RESTAURANT - BAR</div>
-        <div class="divider"></div>
-        <div class="info">Table: <b>${props.selectedTable?.table_number}</b></div>
-        <div class="info">Commerçant: <b>${props.employeeId || 'Staff'}</b></div>
-        <div class="info">Date: ${new Date().toLocaleString('fr-FR')}</div>
-        <div class="info">ID: #${currentOrderId.value || 'N/A'}</div>
+        <div class="store-info">RESTAURANT - coffe</div>
+        <div class="store-info">4180 Ave Habib Thameur, Houmt Souk</div>
       </div>
       
-      <table>
+      <div class="order-info">
+        <div>TABLE: <span class="bold">${props.selectedTable?.table_number}</span></div>
+        <div>SERVEUR: <span class="bold">${props.employeeId || 'Staff'}</span></div>
+        <div>DATE: ${new Date().toLocaleString('fr-FR')}</div>
+        <div>TICKET: #${currentOrderId.value || 'N/A'}</div>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div class="items-container">
         ${itemsHtml}
-      </table>
+      </div>
+      
+      <div class="divider"></div>
       
       <div class="totals">
         <div class="total-row">
-          <span>Total Brut:</span>
-          <span>${formatPrice(totalBeforeDecrease.value)}</span>
+          <span>TOTAL BRUT:</span>
+          <span class="bold">${formatPrice(totalBeforeDecrease.value)}</span>
         </div>
-        ${totalDiscountAmount.value > 0 ? `
-          <div class="total-row" style="color: #e74c3c;">
-            <span>Remises:</span>
-            <span>- ${formatPrice(totalDiscountAmount.value)}</span>
-          </div>
-        ` : ''}
-        <div class="total-row final">
-          <span>NET À PAYER:</span>
+        <div class="total-row grand-total">
+          <span>NET A PAYER:</span>
           <span>${formatPrice(totalAmount.value)}</span>
         </div>
       </div>
       
-      <div class="footer">
-        <div>MERCI DE VOTRE VISITE</div>
-        <div style="margin-top: 5px; font-size: 10px;">Suivez-nous sur Instagram @arpege_resto</div>
+      <div class="footer text-center">
+        <div class="bold">MERCI DE VOTRE VISITE!</div>
+        <div style="margin-top: 10px;">
+          <img src="${qrCodeUrl}" style="width: 80px; height: 80px;" />
+        </div>
       </div>
       
       <script>
         window.onload = () => {
-          window.print();
-          window.onafterprint = () => window.close();
-          // Fallback if onafterprint doesn't fire
-          setTimeout(() => window.close(), 1000);
+          setTimeout(() => {
+            window.print();
+            window.onafterprint = () => window.close();
+            // Fallback for some browsers
+            setTimeout(() => {
+              if (!window.closed) window.close();
+            }, 1000);
+          }, 500);
         };
       <\/script>
     </body>
@@ -804,7 +762,8 @@ const printTicket = () => {
 
   printWindow.document.write(ticketHtml);
   printWindow.document.close();
-};
+}
+
 
 const goBack = () => {
   emit('go-back')
@@ -826,59 +785,115 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* â”€â”€ ROOT â”€â”€ */
 .order-container {
   min-height: 100vh;
-  background-image: url('../../assets/bguser.jpg');
+  font-family: 'Inter', sans-serif;
+  background-image:
+    linear-gradient(160deg, rgba(14,12,10,0.97) 0%, rgba(25,18,8,0.95) 60%, rgba(14,12,10,0.98) 100%),
+    url('../../assets/bguser.jpg');
   background-size: cover;
   background-position: center;
-  background-repeat: no-repeat;
+  background-attachment: fixed;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* â”€â”€ HEADER â”€â”€ */
 .header {
-  background: white;
-  padding: 1.5rem 2rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(212,168,67,0.18);
+  padding: 1.1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .header h1 {
   margin: 0;
-  color: #2c3e50;
-  font-size: 1.5rem;
-}
-
-.disclaimer {
-  margin: 0;
-  padding: 0.75rem 2rem;
-  background: #fff3cd;
-  color: #856404;
-  font-size: 0.9rem;
-  border-bottom: 1px solid #f1c40f;
-  text-align: center;
-  font-weight: 500;
+  color: #f0e6c8;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .back-btn {
-  padding: 0.75rem 1.5rem;
-  background: #95a5a6;
-  color: white;
-  border: none;
-  border-radius: 8px;
+  padding: 0.6rem 1.3rem;
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: all 0.22s ease;
+  font-weight: 500;
 }
 
 .back-btn:hover {
-  background: #7f8c8d;
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.4);
+  color: #fff;
 }
 
+/* â”€â”€ DISCLAIMER â”€â”€ */
+.disclaimer {
+  margin: 0;
+  padding: 0.7rem 2rem;
+  background: rgba(212,168,67,0.1);
+  color: #d4a843;
+  font-size: 0.85rem;
+  border-bottom: 1px solid rgba(212,168,67,0.2);
+  text-align: center;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* â”€â”€ MENU SWITCHER â”€â”€ */
+.menu-switcher {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+  justify-content: center;
+}
+
+.mode-btn {
+  padding: 0.65rem 1.75rem;
+  border: 1.5px solid rgba(212,168,67,0.35);
+  background: transparent;
+  color: rgba(212,168,67,0.75);
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 0.92rem;
+  transition: all 0.25s ease;
+  letter-spacing: 0.02em;
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #d4a843, #b8872a);
+  color: #1a1208;
+  border-color: transparent;
+  box-shadow: 0 6px 20px rgba(212,168,67,0.35);
+}
+
+.mode-btn:hover:not(.active) {
+  background: rgba(212,168,67,0.1);
+  border-color: rgba(212,168,67,0.6);
+  color: #d4a843;
+}
+
+/* â”€â”€ CONTENT â”€â”€ */
 .content {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -889,12 +904,20 @@ onMounted(async () => {
   gap: 2rem;
 }
 
+/* â”€â”€ SECTION HEADINGS â”€â”€ */
 .products-section h2,
 .order-summary h2 {
-  margin: 0 0 1.5rem 0;
-  color: #2c3e50;
+  margin: 0 0 1.25rem 0;
+  color: #d4a843;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(212,168,67,0.2);
 }
 
+/* â”€â”€ CATEGORY FILTER â”€â”€ */
 .category-filter {
   display: flex;
   gap: 0.5rem;
@@ -903,786 +926,429 @@ onMounted(async () => {
 }
 
 .filter-btn {
-  padding: 0.5rem 1rem;
-  border: 2px solid #ddd;
-  background: white;
+  padding: 0.45rem 1rem;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.6);
   border-radius: 20px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 0.9rem;
+  transition: all 0.22s ease;
+  font-size: 0.87rem;
+  font-family: inherit;
+  font-weight: 500;
 }
 
-.filter-btn:hover {
-  border-color: #3498db;
-}
+.filter-btn:hover { border-color: rgba(212,168,67,0.5); color: #d4a843; }
 
 .filter-btn.active {
-  background: #3498db;
-  color: white;
-  border-color: #3498db;
+  background: linear-gradient(135deg, #d4a843, #b8872a);
+  color: #1a1208;
+  border-color: transparent;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(212,168,67,0.3);
 }
 
+/* â”€â”€ PRODUCTS GRID â”€â”€ */
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
   gap: 1rem;
-}
-
-.product-card {
-  background: white;
-  border-radius: 8px;
-  padding: 1rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
-
-.product-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.product-card.out-of-stock {
-  opacity: 0.6;
-}
-
-.product-info h3 {
-  margin: 0 0 0.5rem 0;
-  color: #2c3e50;
-  font-size: 1.1rem;
-}
-
-.product-price {
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: #27ae60;
-  margin: 0.5rem 0;
-}
-
-.product-category {
-  font-size: 0.85rem;
-  color: #7f8c8d;
-  margin: 0.25rem 0;
-}
-
-.stock-warning {
-  color: #e74c3c;
-  font-size: 0.85rem;
-  margin: 0.25rem 0;
-  font-weight: 600;
-}
-
-.stock-info {
-  color: #7f8c8d;
-  font-size: 0.85rem;
-  margin: 0.25rem 0;
-}
-
-.quantity-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  justify-content: center;
-  margin-top: 1rem;
-}
-
-.qty-btn {
-  width: 32px;
-  height: 32px;
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  transition: all 0.3s ease;
-}
-
-.qty-btn:hover:not(:disabled) {
-  background: #3498db;
-  color: white;
-  border-color: #3498db;
-}
-
-.qty-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.quantity {
-  min-width: 30px;
-  text-align: center;
-  font-weight: 600;
-}
-
-.order-summary {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  position: sticky;
-  top: 2rem;
-  max-height: calc(100vh - 4rem);
-  overflow-y: auto;
-}
-
-.empty-cart {
-  text-align: center;
-  padding: 2rem;
-  color: #7f8c8d;
-}
-
-.order-items {
-  margin-bottom: 1.5rem;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.order-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-.item-info {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.item-name {
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.item-price {
-  font-size: 0.85rem;
-  color: #7f8c8d;
-}
-
-.item-total {
-  font-weight: 600;
-  color: #27ae60;
-  margin: 0 1rem;
-}
-
-.remove-btn {
-  background: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.remove-btn:hover {
-  background: #c0392b;
-}
-
-.order-total {
-  border-top: 2px solid #e0e0e0;
-  padding-top: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.total-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 1.3rem;
-  font-weight: bold;
-  color: #2c3e50;
-}
-
-.total-amount {
-  color: #27ae60;
-}
-
-.submit-btn {
-  width: 100%;
-  padding: 1rem;
-  background: #27ae60;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #229954;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-}
-
-.confirm-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 1.5rem 2rem;
-  max-width: 480px;
-  width: 90%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-}
-
-.confirm-title {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.3rem;
-  color: #2c3e50;
-}
-
-.confirm-subtitle {
-  margin: 0 0 1rem 0;
-  font-size: 0.9rem;
-  color: #7f8c8d;
-}
-
-.confirm-items {
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid #ecf0f1;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-}
-
-.confirm-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #f2f2f2;
-}
-
-.confirm-item:last-child {
-  border-bottom: none;
-}
-
-.confirm-item-name {
-  flex: 1;
-  font-weight: 500;
-  color: #2c3e50;
-}
-
-.confirm-item-qty {
-  margin: 0 0.5rem;
-  color: #7f8c8d;
-}
-
-.confirm-item-total {
-  font-weight: 600;
-  color: #27ae60;
-}
-
-.confirm-total-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 1.2rem;
-  color: #2c3e50;
-}
-
-.confirm-total-amount {
-  color: #27ae60;
-}
-
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-.btn-secondary,
-.btn-primary {
-  min-width: 110px;
-  padding: 0.55rem 1.1rem;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  font-size: 0.95rem;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary {
-  background: #ecf0f1;
-  color: #2c3e50;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #d0d7de;
-}
-
-.btn-primary {
-  background: #27ae60;
-  color: #ffffff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #219150;
-}
-
-.btn-secondary:disabled,
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.pay-btn {
-  width: 100%;
-  padding: 1rem;
-  background: #f39c12;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 0.75rem;
-}
-
-.pay-btn:hover:not(:disabled) {
-  background: #e67e22;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.pay-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.order-paid {
-  margin-top: 0.75rem;
-  font-size: 1rem;
-  color: #27ae60;
-  font-weight: 600;
-  text-align: center;
-  padding: 0.75rem;
-  background: #d5f4e6;
-  border-radius: 8px;
 }
 
 .loading {
   text-align: center;
   padding: 3rem;
-  color: #7f8c8d;
+  color: rgba(255,255,255,0.4);
+  font-size: 0.95rem;
 }
 
-.message {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  padding: 1rem 1.5rem;
-  border-radius: 6px;
-  color: white;
-  z-index: 1001;
-  animation: slideIn 0.3s ease-out;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-  border-left: 4px solid rgba(0,0,0,0.15);
+/* â”€â”€ PRODUCT CARD â”€â”€ */
+.product-card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 1.1rem;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
-.message.success {
-  background: #27ae60;
-  border-left-color: #1e8449;
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+  border-color: rgba(212,168,67,0.3);
 }
 
-.message.error {
-  background: #e74c3c;
-  border-left-color: #c0392b;
+.product-card.out-of-stock { opacity: 0.45; filter: grayscale(40%); }
+
+.product-info h3 { margin: 0 0 0.45rem 0; color: #f0e6c8; font-size: 1rem; font-weight: 600; }
+.product-price { font-size: 1.1rem; font-weight: 700; color: #d4a843; margin: 0.4rem 0; }
+.product-category { font-size: 0.78rem; color: rgba(255,255,255,0.4); margin: 0.2rem 0; text-transform: uppercase; letter-spacing: 0.04em; }
+.stock-warning { color: #e74c3c; font-size: 0.8rem; margin: 0.2rem 0; font-weight: 600; }
+.stock-info { color: rgba(255,255,255,0.4); font-size: 0.8rem; margin: 0.2rem 0; }
+
+/* â”€â”€ QTY CONTROLS â”€â”€ */
+.quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.9rem;
 }
 
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+.qty-btn {
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid rgba(212,168,67,0.35);
+  background: rgba(212,168,67,0.08);
+  color: #d4a843;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@media (max-width: 1024px) {
-  .order-layout {
-    grid-template-columns: 1fr;
-  }
-  
-  .order-summary {
-    position: relative;
-    top: 0;
-    max-height: none;
-  }
+.qty-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #d4a843, #b8872a);
+  color: #1a1208;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(212,168,67,0.35);
 }
 
-@media (max-width: 768px) {
-  .order-container {
-    min-height: 100vh;
-  }
+.qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-  .header {
-    padding: 1rem;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
+.quantity { min-width: 28px; text-align: center; font-weight: 700; font-size: 1rem; color: #f0e6c8; }
 
-  .header h1 {
-    font-size: 1.2rem;
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .back-btn {
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
-  }
-
-  .content {
-    padding: 1rem;
-  }
-
-  .products-section h2,
-  .order-summary h2 {
-    font-size: 1.3rem;
-    margin-bottom: 1rem;
-  }
-
-  .category-filter {
-    gap: 0.4rem;
-    margin-bottom: 1rem;
-  }
-
-  .filter-btn {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-  }
-
-  .products-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .product-card {
-    padding: 0.75rem;
-  }
-
-  .product-info h3 {
-    font-size: 1rem;
-  }
-
-  .product-price {
-    font-size: 1rem;
-  }
-
-  .product-category,
-  .stock-info,
-  .stock-warning {
-    font-size: 0.8rem;
-  }
-
-  .quantity-controls {
-    margin-top: 0.75rem;
-    gap: 0.4rem;
-  }
-
-  .qty-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 1rem;
-  }
-
-  .order-summary {
-    padding: 1rem;
-  }
-
-  .order-items {
-    max-height: 300px;
-  }
-
-  .order-item {
-    padding: 0.75rem;
-  }
-
-  .item-name {
-    font-size: 0.95rem;
-  }
-
-  .item-price {
-    font-size: 0.8rem;
-  }
-
-  .item-total {
-    font-size: 0.95rem;
-    margin: 0 0.5rem;
-  }
-
-  .remove-btn {
-    width: 24px;
-    height: 24px;
-    font-size: 1rem;
-  }
-
-  .total-row {
-    font-size: 1.1rem;
-  }
-
-  .submit-btn,
-  .pay-btn,
-  .print-btn {
-    padding: 0.875rem;
-    font-size: 1rem;
-  }
-
-  .order-paid {
-    font-size: 0.9rem;
-    padding: 0.6rem;
-  }
-
-  .no-order-warning {
-    font-size: 0.8rem;
-  }
-
-  .message {
-    bottom: 1rem;
-    right: 1rem;
-    left: 1rem;
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
-  }
+/* â”€â”€ ORDER SUMMARY â”€â”€ */
+.order-summary {
+  background: rgba(255,255,255,0.055);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(212,168,67,0.18);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  position: sticky;
+  top: 5rem;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
 }
 
-@media (max-width: 480px) {
-  .header {
-    padding: 0.75rem;
-  }
+.order-summary::-webkit-scrollbar { width: 4px; }
+.order-summary::-webkit-scrollbar-thumb { background: rgba(212,168,67,0.3); border-radius: 2px; }
 
-  .header h1 {
-    font-size: 1rem;
-  }
+.empty-cart {
+  text-align: center;
+  padding: 2rem;
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+  font-size: 0.9rem;
+}
 
-  .back-btn {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.85rem;
-  }
+/* â”€â”€ ORDER ITEMS â”€â”€ */
+.order-items {
+  margin-bottom: 1.5rem;
+  max-height: 360px;
+  overflow-y: auto;
+}
 
-  .content {
-    padding: 0.75rem;
-  }
+.order-items::-webkit-scrollbar { width: 3px; }
+.order-items::-webkit-scrollbar-thumb { background: rgba(212,168,67,0.3); border-radius: 2px; }
 
-  .products-section h2,
-  .order-summary h2 {
-    font-size: 1.1rem;
-  }
+.order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
 
-  .category-filter {
-    gap: 0.3rem;
-  }
+.item-info { display: flex; flex-direction: column; flex: 1; }
+.item-name { font-weight: 600; color: #f0e6c8; font-size: 0.95rem; }
+.item-price { font-size: 0.8rem; color: rgba(255,255,255,0.45); margin-top: 0.2rem; }
+.item-total { font-weight: 700; color: #d4a843; margin: 0 0.75rem; font-size: 0.95rem; }
 
-  .filter-btn {
-    padding: 0.35rem 0.7rem;
-    font-size: 0.8rem;
-  }
+.remove-btn {
+  background: rgba(231,76,60,0.15);
+  color: #e74c3c;
+  border: 1px solid rgba(231,76,60,0.3);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  .products-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
-  }
+.remove-btn:hover { background: #e74c3c; color: #fff; border-color: #e74c3c; }
 
-  .product-card {
-    padding: 0.6rem;
-  }
+/* â”€â”€ ORDER TOTAL â”€â”€ */
+.order-total {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 1rem;
+  margin-bottom: 1.25rem;
+}
 
-  .product-info h3 {
-    font-size: 0.9rem;
-    margin-bottom: 0.3rem;
-  }
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f0e6c8;
+  margin-top: 0.5rem;
+}
 
-  .product-price {
-    font-size: 0.9rem;
-    margin: 0.3rem 0;
-  }
+.total-amount { color: #d4a843; }
 
-  .qty-btn {
-    width: 26px;
-    height: 26px;
-    font-size: 0.9rem;
-  }
+.total-row.subtotal {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.45);
+  margin-bottom: 0.2rem;
+  margin-top: 0;
+}
 
-  .quantity {
-    min-width: 25px;
-    font-size: 0.9rem;
-  }
+/* â”€â”€ ACTION BUTTONS â”€â”€ */
+.submit-btn {
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(135deg, #27ae60, #1e8449);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.03em;
+  box-shadow: 0 6px 20px rgba(39,174,96,0.3);
+}
 
-  .order-summary {
-    padding: 0.75rem;
-  }
+.submit-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(39,174,96,0.45); }
+.submit-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
-  .order-item {
-    padding: 0.6rem;
-    flex-wrap: wrap;
-  }
+.pay-btn {
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(135deg, #d4a843, #b8872a);
+  color: #1a1208;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.03em;
+  margin-top: 0.75rem;
+  box-shadow: 0 6px 20px rgba(212,168,67,0.3);
+}
 
-  .item-info {
-    flex: 1 1 100%;
-    margin-bottom: 0.5rem;
-  }
+.pay-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(212,168,67,0.45); }
+.pay-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
-  .item-total {
-    flex: 0 0 auto;
-    margin: 0;
-  }
+.print-btn {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.75);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  margin-top: 0.75rem;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
 
-  .remove-btn {
-    flex: 0 0 auto;
-  }
+.print-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); color: #fff; }
+.print-btn:active { transform: translateY(1px); }
 
-  .total-row {
-    font-size: 1rem;
-  }
-
-  .submit-btn,
-  .pay-btn,
-  .print-btn {
-    padding: 0.75rem;
-    font-size: 0.95rem;
-  }
-
-  .order-paid {
-    font-size: 0.85rem;
-    padding: 0.5rem;
-  }
-
-  .no-order-warning {
-    font-size: 0.75rem;
-  }
+/* â”€â”€ STATUS INDICATORS â”€â”€ */
+.order-paid {
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  color: #27ae60;
+  font-weight: 600;
+  text-align: center;
+  padding: 0.75rem;
+  background: rgba(39,174,96,0.1);
+  border: 1px solid rgba(39,174,96,0.25);
+  border-radius: 10px;
 }
 
 .no-order-warning {
   margin-top: 0.75rem;
   font-size: 0.85rem;
-  color: #e74c3c;
+  color: rgba(231,76,60,0.8);
   font-style: italic;
-}
-.total-row.subtotal,
-.total-row.discount {
-  font-size: 0.95rem;
   font-weight: 500;
-  margin-bottom: 0.25rem;
-  color: #7f8c8d;
 }
 
-.total-row.discount .discount-amount {
-  color: #e74c3c;
-}
-
-.discount-settings {
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px dashed #ddd;
-}
-
-.global-discount-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  cursor: pointer;
-  font-size: 0.95rem;
-  color: #2c3e50;
-  font-weight: 600;
-}
-
-.global-discount-toggle input {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
-.item-discount-toggle {
-  margin-top: 0.5rem;
-}
-
-.switch-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.8rem;
-  color: #7f8c8d;
-}
-
-.switch-label input {
-  cursor: pointer;
-}
-
-.discounted-price {
-  color: #27ae60;
-  font-weight: bold;
-}
-
-.item-original-price {
-  font-size: 0.75rem;
-  text-decoration: line-through;
-  color: #95a5a6;
-  margin-bottom: 2px;
-}
-
-.confirm-total-row.subtotal,
-.confirm-total-row.discount {
-  font-size: 0.9rem;
-  margin-bottom: 0.25rem;
-  color: #7f8c8d;
-}
-
-.confirm-total-row.discount span:last-child {
-  color: #e74c3c;
-}
-
-.print-btn {
-  width: 100%;
-  padding: 1rem;
-  background: #34495e;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 1rem;
-  transition: all 0.3s ease;
+/* â”€â”€ CONFIRM MODAL â”€â”€ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+}
+
+.confirm-card {
+  background: #1a1612;
+  border: 1px solid rgba(212,168,67,0.2);
+  border-radius: 18px;
+  padding: 2rem;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+  animation: fadeUp 0.25s ease-out;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.confirm-title { margin: 0 0 0.5rem 0; font-size: 1.25rem; color: #d4a843; font-weight: 700; }
+.confirm-subtitle { margin: 0 0 1.25rem 0; font-size: 0.88rem; color: rgba(255,255,255,0.5); }
+
+.confirm-items {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  background: rgba(255,255,255,0.03);
+}
+
+.confirm-items::-webkit-scrollbar { width: 3px; }
+.confirm-items::-webkit-scrollbar-thumb { background: rgba(212,168,67,0.3); }
+
+.confirm-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.confirm-item:last-child { border-bottom: none; }
+.confirm-item-name { flex: 1; font-weight: 500; color: #f0e6c8; font-size: 0.92rem; }
+.confirm-item-qty { margin: 0 0.75rem; color: rgba(255,255,255,0.4); font-size: 0.88rem; }
+.confirm-item-total { font-weight: 700; color: #d4a843; font-size: 0.92rem; }
+
+.confirm-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: rgba(255,255,255,0.7);
+}
+
+.confirm-total-row.subtotal { font-size: 0.88rem; color: rgba(255,255,255,0.4); font-weight: 500; }
+.confirm-total-amount { color: #d4a843; font-size: 1.15rem; font-weight: 800; }
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 
-.print-btn:hover {
-  background: #2c3e50;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+.btn-secondary,
+.btn-primary {
+  min-width: 110px;
+  padding: 0.65rem 1.25rem;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.2s ease;
 }
 
-.print-btn:active {
-  transform: translateY(0);
+.btn-secondary {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.13); color: #fff; }
+
+.btn-primary {
+  background: linear-gradient(135deg, #27ae60, #1e8449);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(39,174,96,0.3);
+}
+
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(39,174,96,0.45); }
+.btn-secondary:disabled, .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* â”€â”€ TOAST â”€â”€ */
+.message {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  color: #fff;
+  z-index: 2000;
+  animation: slideIn 0.3s ease-out;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  font-weight: 600;
+  font-size: 0.92rem;
+  backdrop-filter: blur(8px);
+}
+
+.message.success { background: linear-gradient(135deg,#27ae60,#1e8449); }
+.message.error   { background: linear-gradient(135deg,#e74c3c,#c0392b); }
+
+@keyframes slideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* â”€â”€ RESPONSIVE â”€â”€ */
+@media (max-width: 1024px) {
+  .order-layout { grid-template-columns: 1fr; }
+  .order-summary { position: relative; top: 0; max-height: none; }
+}
+
+@media (max-width: 768px) {
+  .header { padding: 1rem; flex-wrap: wrap; gap: 0.75rem; }
+  .header h1 { font-size: 1.1rem; flex: 1; }
+  .content { padding: 1rem; }
+  .products-grid { grid-template-columns: repeat(auto-fill, minmax(145px,1fr)); gap: 0.75rem; }
+  .order-summary { padding: 1rem; }
+  .message { bottom: 1rem; right: 1rem; left: 1rem; }
+}
+
+@media (max-width: 480px) {
+  .header { padding: 0.75rem; }
+  .content { padding: 0.75rem; }
+  .products-grid { grid-template-columns: repeat(2,1fr); gap: 0.5rem; }
+  .product-card { padding: 0.75rem; }
 }
 </style>
-
-

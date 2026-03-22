@@ -13,9 +13,30 @@
     <!-- Products Tab -->
     <div v-if="activeTab === 'products'" class="tab-content">
       <div class="crud-header">
-        <button @click="openAddProductModal" class="btn btn-primary">
-          <span>+</span> Ajouter Produit
-        </button>
+        <div class="header-left">
+          <button @click="openAddProductModal" class="btn btn-primary">
+            <span>+</span> Ajouter Produit
+          </button>
+        </div>
+        <div class="header-right">
+          <div class="search-filters">
+            <div class="search-box">
+              <input 
+                v-model="searchQuery" 
+                type="text" 
+                placeholder="Rechercher un produit..." 
+                class="search-input"
+              />
+              <span class="search-icon">🔍</span>
+            </div>
+            <select v-model="selectedCategory" class="filter-select">
+              <option value="">Toutes les catégories</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                {{ cat.name }}
+              </option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div class="table-container">
@@ -24,7 +45,8 @@
             <tr>
               <th>ID</th>
               <th>Nom</th>
-              <th>Prix</th>
+              <th>Prix Standard</th>
+              <th>Prix Étranger</th>
               <th>Catégorie</th>
               <th>Ingrédient du Stock</th>
               <th>Actions</th>
@@ -34,13 +56,14 @@
             <tr v-if="loadingProducts">
               <td colspan="6" class="loading">Chargement...</td>
             </tr>
-            <tr v-else-if="products.length === 0">
-              <td colspan="6" class="empty">Aucun produit trouvé</td>
+            <tr v-else-if="filteredProducts.length === 0">
+              <td colspan="7" class="empty">Aucun produit trouvé</td>
             </tr>
-            <tr v-else v-for="product in products" :key="product.id">
+            <tr v-else v-for="product in paginatedProducts" :key="product.id">
               <td>{{ product.id }}</td>
               <td>{{ product.name }}</td>
               <td>{{ formatPrice(product.price) }}</td>
+              <td>{{ formatPrice(product.price_strangers) }}</td>
               <td>{{ product.category_name || '-' }}</td>
               <td>
                 <span v-if="product.stock_ingredients && product.stock_ingredients.length > 0">
@@ -57,7 +80,89 @@
             </tr>
           </tbody>
         </table>
+    </div>
+
+    <!-- Cards Container -->
+    <div class="cards-container">
+      <div v-if="loadingProducts" class="loading">Chargement...</div>
+      <div v-else-if="filteredProducts.length === 0" class="empty">Aucun produit trouvé</div>
+      <div v-else v-for="product in paginatedProducts" :key="product.id" class="data-card">
+        <div class="card-header">
+          <div class="card-id-wrapper">
+            <span class="card-label">ID:</span>
+            <span class="card-id">#{{ product.id }}</span>
+          </div>
+          <span class="badge badge-category">{{ product.category_name || 'Sans catégorie' }}</span>
+        </div>
+        
+        <div class="card-body">
+          <div class="info-row">
+            <span class="info-label">Nom</span>
+            <span class="info-value">{{ product.name }}</span>
+          </div>
+          <div class="card-prices">
+            <div class="info-row">
+              <span class="info-label">Prix Std</span>
+              <span class="info-value price">{{ formatPrice(product.price) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Prix Étranger</span>
+              <span class="info-value price">{{ formatPrice(product.price_strangers) }}</span>
+            </div>
+          </div>
+          <div class="info-row" v-if="product.stock_ingredients && product.stock_ingredients.length > 0">
+            <span class="info-label">Ingrédients</span>
+            <div class="ingredient-tags">
+              <span v-for="(ing, index) in product.stock_ingredients" :key="index" class="ingredient-tag">
+                {{ ing.stock_name || ing.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card-actions">
+          <button @click="openEditProductModal(product)" class="btn btn-edit">
+            <span>✏️</span> Modifier
+          </button>
+          <button @click="confirmDeleteProduct(product)" class="btn btn-delete">
+            <span>🗑️</span> Supprimer
+          </button>
+        </div>
       </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-container" v-if="totalPages > 1">
+      <div class="pagination-info">
+        Page {{ currentPage }} sur {{ totalPages }}
+      </div>
+      <div class="pagination-controls">
+        <button 
+          @click="setPage(currentPage - 1)" 
+          :disabled="currentPage === 1" 
+          class="page-btn prev-btn"
+        >
+          &laquo; Précédent
+        </button>
+        <div class="page-numbers">
+          <button 
+            v-for="page in totalPages" 
+            :key="page" 
+            @click="setPage(page)" 
+            :class="['page-btn', { active: currentPage === page }]"
+          >
+            {{ page }}
+          </button>
+        </div>
+        <button 
+          @click="setPage(currentPage + 1)" 
+          :disabled="currentPage === totalPages" 
+          class="page-btn next-btn"
+        >
+          Suivant &raquo;
+        </button>
+      </div>
+    </div>
     </div>
 
     <!-- Product Add/Edit Modal -->
@@ -74,8 +179,12 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Prix *</label>
+              <label>Prix Standard *</label>
               <input v-model.number="productForm.price" type="number" step="0.01" min="0" required />
+            </div>
+            <div class="form-group">
+              <label>Prix Étranger *</label>
+              <input v-model.number="productForm.price_strangers" type="number" step="0.01" min="0" required />
             </div>
           </div>
           <div class="form-group">
@@ -192,7 +301,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
 
 const API_URL = getApiUrl(API_ENDPOINTS.PRODUCT)
@@ -220,10 +329,15 @@ const deletingProduct = ref(false)
 const deletingIngredient = ref(false)
 const message = ref('')
 const messageType = ref('')
+const searchQuery = ref('')
+const selectedCategory = ref('')
+const currentPage = ref(1)
+const itemsPerPage = 8
 
 const productForm = ref({
   name: '',
   price: 0,
+  price_strangers: 0,
   quantity: 0,
   category_id: '',
   needsIngredient: false,
@@ -233,6 +347,34 @@ const productForm = ref({
 const ingredientForm = ref({
   name: '',
   weight: 0
+})
+
+const filteredProducts = computed(() => {
+  return products.value.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesCategory = !selectedCategory.value || Number(product.category_id) === Number(selectedCategory.value)
+    return matchesSearch && matchesCategory
+  })
+})
+
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredProducts.value.slice(start, end)
+})
+
+const totalPages = computed(() => Math.ceil(filteredProducts.value.length / itemsPerPage))
+
+const setPage = (page) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+    const container = document.querySelector('.crud-container')
+    if (container) container.scrollIntoView({ behavior: 'smooth' })
+  }
+}
+
+watch([searchQuery, selectedCategory], () => {
+  currentPage.value = 1
 })
 
 const fetchProducts = async () => {
@@ -369,6 +511,7 @@ const openEditProductModal = async (product) => {
   productForm.value = {
     name: product.name,
     price: product.price,
+    price_strangers: product.price_strangers || 0,
     quantity: product.quantity,
     category_id: product.category_id || '',
     needsIngredient: product.stock_ingredients && product.stock_ingredients.length > 0,
@@ -441,6 +584,7 @@ const saveProduct = async () => {
     const requestData = {
       name: productForm.value.name.trim(),
       price: parseFloat(productForm.value.price),
+      price_strangers: parseFloat(productForm.value.price_strangers),
       quantity: parseInt(productForm.value.quantity),
       category_id: productForm.value.category_id || null,
       stock_ingredients: productForm.value.needsIngredient 
@@ -712,6 +856,54 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+}
+
+.search-filters {
+  display: flex;
+  gap: 1rem;
+}
+
+.search-box {
+  position: relative;
+  min-width: 250px;
+}
+
+.search-input, .filter-select {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  background: #f8fafc;
+}
+
+.filter-select {
+  padding-left: 1rem;
+  min-width: 180px;
+  cursor: pointer;
+}
+
+.search-input:focus, .filter-select:focus {
+  outline: none;
+  border-color: #3498db;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 1rem;
 }
 
 .btn {
@@ -768,6 +960,10 @@ onMounted(() => {
 
 .table-container {
   overflow-x: auto;
+}
+
+.cards-container {
+  display: none;
 }
 
 .data-table {
@@ -1251,6 +1447,310 @@ onMounted(() => {
   .ingredient-name-input,
   .ingredient-weight-input {
     width: 100%;
+  }
+}
+.loading, .empty {
+  text-align: center;
+  padding: 2rem;
+  color: #7f8c8d;
+}
+
+.pagination-container {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pagination-info {
+  font-size: 0.9rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.page-btn {
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.page-btn.active {
+  background: #3498db;
+  color: white;
+  border-color: #3498db;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.prev-btn, .next-btn {
+  padding: 0.5rem 1rem;
+}
+
+@media (max-width: 768px) {
+  .crud-container {
+    padding: 1rem;
+    background: #f8f9fa;
+    box-shadow: none;
+  }
+
+  .crud-header {
+    flex-direction: column-reverse;
+    gap: 1.25rem;
+    align-items: stretch;
+  }
+
+  .header-right, .search-filters, .search-box, .filter-select {
+    width: 100%;
+  }
+
+  .search-filters {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .search-input, .filter-select {
+    padding: 0.85rem 1rem 0.85rem 2.75rem;
+    font-size: 1rem;
+  }
+  
+  .filter-select {
+    padding-left: 1rem;
+  }
+
+  .btn-primary {
+    justify-content: center;
+    width: 100%;
+    padding: 1rem;
+    font-weight: 600;
+  }
+
+  /* Hide table view */
+  .table-container {
+    display: none;
+  }
+
+  /* Show and style card view */
+  .cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .data-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid #edf2f7;
+    transition: transform 0.2s ease;
+  }
+
+  .data-card:active {
+    transform: scale(0.98);
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+    gap: 0.5rem;
+  }
+
+  .card-id-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .card-label {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .card-id {
+    font-family: monospace;
+    font-weight: 700;
+    color: #334155;
+    background: #f1f5f9;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+
+  .badge-category {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+
+  .card-body {
+    margin-bottom: 1.25rem;
+  }
+  
+  .card-prices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid #f8fafc;
+    border-bottom: 1px solid #f8fafc;
+  }
+
+  .info-row {
+    margin-bottom: 0.75rem;
+  }
+
+  .info-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .info-label {
+    display: block;
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    margin-bottom: 0.25rem;
+  }
+
+  .info-value {
+    display: block;
+    color: #1e293b;
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  
+  .info-value.price {
+    color: #27ae60;
+    font-weight: 700;
+  }
+
+  .ingredient-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+  }
+
+  .ingredient-tag {
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  .card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .card-actions .btn {
+    width: 100%;
+    margin: 0;
+    padding: 0.65rem;
+    font-size: 0.85rem;
+    justify-content: center;
+  }
+
+  .modal-content {
+    width: 95%;
+    max-width: none !important;
+    margin: 1rem;
+    border-radius: 16px;
+  }
+
+  .form-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+  }
+
+  .message {
+    bottom: 1.5rem;
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    text-align: center;
+  }
+  
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .page-numbers {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin-top: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-prices {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .card-actions {
+    grid-template-columns: 1fr;
   }
 }
 </style>

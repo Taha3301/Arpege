@@ -6,11 +6,26 @@ import UserLandingpage from './components/User/Landingpage.vue'
 import OrderPage from './components/User/OrderPage.vue'
 import OrderUpdate from './components/User/OrderUpdate.vue'
 
-const currentView = ref('login')
-const userRole = ref(null)
-const userId = ref(null)
-const userName = ref('')
+// Restore session from localStorage on page load
+const savedSession = (() => {
+  try { return JSON.parse(localStorage.getItem('restoapp_session')) } catch { return null }
+})()
+
+const currentView = ref(savedSession?.view || 'login')
+const userRole = ref(savedSession?.role || null)
+const userId = ref(savedSession?.id ?? null)
+const userName = ref(savedSession?.username || '')
 const selectedTable = ref(null)
+const priceMode = ref(savedSession?.priceMode || 'menu1')
+
+const saveSession = (view, role, id, username, mode = priceMode.value) => {
+  localStorage.setItem('restoapp_session', JSON.stringify({ view, role, id, username, priceMode: mode }))
+}
+
+const handlePriceModeUpdate = (mode) => {
+  priceMode.value = mode
+  saveSession(currentView.value, userRole.value, userId.value, userName.value, mode)
+}
 
 const handleLoginSuccess = (user) => {
   console.log('Login success, user data:', user)
@@ -20,14 +35,18 @@ const handleLoginSuccess = (user) => {
   // Ensure user.id is converted to number
   userId.value = user.id !== null && user.id !== undefined ? Number(user.id) : null
   console.log('Stored userId:', userId.value, 'Type:', typeof userId.value)
+  let view = 'login'
   if (user.role === 'admin') {
-    currentView.value = 'admin'
+    view = 'admin'
   } else if (user.role === 'employee') {
-    currentView.value = 'user'
+    view = 'user'
   }
+  currentView.value = view
+  saveSession(view, user.role, userId.value, userName.value)
 }
 
 const handleLogout = () => {
+  localStorage.removeItem('restoapp_session')
   currentView.value = 'login'
   userRole.value = null
   userId.value = null
@@ -69,15 +88,18 @@ const handleOrderSubmitted = () => {
   <UserLandingpage 
     v-else-if="currentView === 'user'" 
     :user-name="userName"
+    :price-mode="priceMode"
     @logout="handleLogout"
     @select-table="handleSelectTable"
     @update-order="handleUpdateOrder"
+    @update-price-mode="handlePriceModeUpdate"
   />
   <OrderPage 
     v-else-if="currentView === 'order' && selectedTable"
     :selected-table="selectedTable"
     :employeeId="userId"
-    :key="`order-${userId}-${selectedTable?.id}`"
+    :price-mode="priceMode"
+    :key="`order-${userId}-${selectedTable?.id}-${priceMode}`"
     @go-back="handleGoBack"
     @order-submitted="handleOrderSubmitted"
   />
@@ -85,7 +107,8 @@ const handleOrderSubmitted = () => {
     v-else-if="currentView === 'orderUpdate' && selectedTable"
     :selected-table="selectedTable"
     :employeeId="userId"
-    :key="`order-update-${userId}-${selectedTable?.id}`"
+    :price-mode="priceMode"
+    :key="`order-update-${userId}-${selectedTable?.id}-${priceMode}`"
     @go-back="handleGoBack"
     @order-submitted="handleOrderSubmitted"
   />

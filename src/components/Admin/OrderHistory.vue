@@ -126,8 +126,8 @@
               <tr v-for="item in orderItemsDetail" :key="item.id">
                 <td>{{ item.product_name || ('Produit ' + item.product_id) }}</td>
                 <td>{{ item.quantity }}</td>
-                <td>{{ formatPrice(item.price) }}</td>
-                <td>{{ formatPrice(item.price * item.quantity) }}</td>
+                <td>{{ formatPrice((item.total_before_decrease || item.price) / item.quantity) }}</td>
+                <td>{{ formatPrice(item.total_before_decrease || item.price) }}</td>
               </tr>
               <tr v-if="orderItemsDetail.length === 0">
                 <td colspan="4" class="no-results">
@@ -304,7 +304,7 @@ const openDetails = async (order) => {
 }
 
 const calculateRawTotal = () => {
-  return orderItemsDetail.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  return orderItemsDetail.value.reduce((sum, item) => sum + Number(item.total_before_decrease || item.price), 0)
 }
 
 const closeDetails = () => {

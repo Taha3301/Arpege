@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import logoImage from '../assets/logo.svg'
+import logoImage from '../assets/logo.png'
 import backgroundImage from '../assets/bg.jpg'
 
 const emit = defineEmits(['login-success'])

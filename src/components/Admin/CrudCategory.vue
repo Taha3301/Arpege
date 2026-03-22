@@ -1,9 +1,22 @@
 <template>
   <div class="crud-container">
     <div class="crud-header">
-      <button @click="openAddModal" class="btn btn-primary">
-        <span>+</span> Ajouter Catégorie
-      </button>
+      <div class="header-left">
+        <button @click="openAddModal" class="btn btn-primary">
+          <span>+</span> Ajouter Catégorie
+        </button>
+      </div>
+      <div class="header-right">
+        <div class="search-box">
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            placeholder="Rechercher une catégorie..." 
+            class="search-input"
+          />
+          <span class="search-icon">🔍</span>
+        </div>
+      </div>
     </div>
 
     <div class="table-container">
@@ -20,10 +33,10 @@
           <tr v-if="loading">
             <td colspan="4" class="loading">Chargement...</td>
           </tr>
-          <tr v-else-if="categories.length === 0">
+          <tr v-else-if="filteredCategories.length === 0">
             <td colspan="4" class="empty">Aucune catégorie trouvée</td>
           </tr>
-          <tr v-else v-for="category in categories" :key="category.id">
+          <tr v-else v-for="category in paginatedCategories" :key="category.id">
             <td>{{ category.id }}</td>
             <td>{{ category.name }}</td>
             <td>{{ formatDate(category.created_at) }}</td>
@@ -34,6 +47,75 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="cards-container">
+      <div v-if="loading" class="loading">Chargement...</div>
+      <div v-else-if="filteredCategories.length === 0" class="empty">Aucune catégorie trouvée</div>
+      <div v-else v-for="category in paginatedCategories" :key="category.id" class="data-card">
+        <div class="card-header">
+          <div class="card-id-wrapper">
+            <span class="card-label">ID:</span>
+            <span class="card-id">#{{ category.id }}</span>
+          </div>
+        </div>
+        
+        <div class="card-body">
+          <div class="card-info">
+            <div class="info-row">
+              <span class="info-label">Nom</span>
+              <span class="info-value">{{ category.name }}</span>
+            </div>
+            
+            <div class="info-row">
+              <span class="info-label">Créée le</span>
+              <span class="info-value">{{ formatDate(category.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card-actions">
+          <button @click="openEditModal(category)" class="btn btn-edit">
+            <span>✏️</span> Modifier
+          </button>
+          <button @click="confirmDelete(category)" class="btn btn-delete">
+            <span>🗑️</span> Supprimer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-container" v-if="totalPages > 1">
+      <div class="pagination-info">
+        Page {{ currentPage }} sur {{ totalPages }}
+      </div>
+      <div class="pagination-controls">
+        <button 
+          @click="setPage(currentPage - 1)" 
+          :disabled="currentPage === 1" 
+          class="page-btn prev-btn"
+        >
+          &laquo; Précédent
+        </button>
+        <div class="page-numbers">
+          <button 
+            v-for="page in totalPages" 
+            :key="page" 
+            @click="setPage(page)" 
+            :class="['page-btn', { active: currentPage === page }]"
+          >
+            {{ page }}
+          </button>
+        </div>
+        <button 
+          @click="setPage(currentPage + 1)" 
+          :disabled="currentPage === totalPages" 
+          class="page-btn next-btn"
+        >
+          Suivant &raquo;
+        </button>
+      </div>
     </div>
 
     <!-- Add/Edit Modal -->
@@ -80,7 +162,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
 
 const API_URL = getApiUrl(API_ENDPOINTS.CATEGORY)
@@ -95,9 +177,39 @@ const saving = ref(false)
 const deleting = ref(false)
 const message = ref('')
 const messageType = ref('')
+const searchQuery = ref('')
+const currentPage = ref(1)
+const itemsPerPage = 8
 
 const formData = ref({
   name: ''
+})
+
+const filteredCategories = computed(() => {
+  return categories.value.filter(category => 
+    category.name.toLowerCase().includes(searchQuery.value.toLowerCase())
+  )
+})
+
+const paginatedCategories = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredCategories.value.slice(start, end)
+})
+
+const totalPages = computed(() => Math.ceil(filteredCategories.value.length / itemsPerPage))
+
+const setPage = (page) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+    const container = document.querySelector('.crud-container')
+    if (container) container.scrollIntoView({ behavior: 'smooth' })
+  }
+}
+
+// Reset page when searching
+watch(searchQuery, () => {
+  currentPage.value = 1
 })
 
 const fetchCategories = async () => {
@@ -260,6 +372,43 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+}
+
+.search-box {
+  position: relative;
+  min-width: 250px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  background: #f8fafc;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #3498db;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  font-size: 1rem;
 }
 
 .btn {
@@ -318,6 +467,10 @@ onMounted(() => {
   overflow-x: auto;
 }
 
+.cards-container {
+  display: none;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -349,6 +502,71 @@ onMounted(() => {
   text-align: center;
   padding: 2rem;
   color: #7f8c8d;
+}
+
+.pagination-container {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pagination-info {
+  font-size: 0.9rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.page-btn {
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.page-btn.active {
+  background: #3498db;
+  color: white;
+  border-color: #3498db;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.prev-btn, .next-btn {
+  padding: 0.5rem 1rem;
 }
 
 .modal-overlay {
@@ -483,58 +701,139 @@ onMounted(() => {
 @media (max-width: 768px) {
   .crud-container {
     padding: 1rem;
+    background: #f8f9fa;
+    box-shadow: none;
   }
 
   .crud-header {
-    flex-direction: column;
-    gap: 1rem;
+    flex-direction: column-reverse;
+    gap: 1.25rem;
     align-items: stretch;
   }
 
-  .btn {
+  .header-right, .search-box {
     width: 100%;
+  }
+
+  .search-input {
+    padding: 0.85rem 1rem 0.85rem 2.75rem;
+    font-size: 1rem;
+  }
+
+  .btn-primary {
     justify-content: center;
+    width: 100%;
+    padding: 1rem;
+    font-weight: 600;
   }
 
+  /* Hide table view */
   .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    display: none;
   }
 
-  .data-table {
-    min-width: 500px;
-    font-size: 0.85rem;
+  /* Show and style card view */
+  .cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
   }
 
-  .data-table th,
-  .data-table td {
-    padding: 0.5rem 0.4rem;
+  .data-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid #edf2f7;
+    transition: transform 0.2s ease;
   }
 
-  .actions {
+  .data-card:active {
+    transform: scale(0.98);
+  }
+
+  .card-header {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .card-id-wrapper {
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
   }
 
-  .actions .btn {
+  .card-label {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .card-id {
+    font-family: monospace;
+    font-weight: 700;
+    color: #334155;
+    background: #f1f5f9;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .card-body {
+    margin-bottom: 1.25rem;
+  }
+
+  .info-row {
+    margin-bottom: 1rem;
+  }
+
+  .info-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .info-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    margin-bottom: 0.35rem;
+  }
+
+  .info-value {
+    display: block;
+    color: #1e293b;
+    font-weight: 500;
+    font-size: 1rem;
+  }
+
+  .card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .card-actions .btn {
     width: 100%;
-    padding: 0.5rem;
-    font-size: 0.85rem;
+    margin: 0;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    justify-content: center;
   }
 
   .modal-content {
     width: 95%;
-    max-width: 500px;
+    max-width: none;
     margin: 1rem;
-  }
-
-  .modal-header h2 {
-    font-size: 1.2rem;
-  }
-
-  .form-group {
-    margin-bottom: 1rem;
+    border-radius: 16px;
   }
 
   .modal-footer {
@@ -547,11 +846,23 @@ onMounted(() => {
   }
 
   .message {
-    bottom: 1rem;
-    right: 1rem;
+    bottom: 1.5rem;
     left: 1rem;
-    padding: 0.75rem 1rem;
-    font-size: 0.9rem;
+    right: 1rem;
+    width: auto;
+    text-align: center;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .page-numbers {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin-top: 0.5rem;
   }
 }
 
