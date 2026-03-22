@@ -211,7 +211,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
-import qrCodeUrl from '../../assets/cafe_arpege.png'
+import { offlineService } from '../../utils/offlineService'
+import logoUrl from '../../assets/logo.png'
 
 const props = defineProps({
   selectedTable: {
@@ -274,11 +275,18 @@ const fetchProducts = async () => {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     const data = await response.json()
     if (data.success) {
-      products.value = Array.isArray(data.data) ? data.data : []
+      const productsData = Array.isArray(data.data) ? data.data : []
+      products.value = productsData
+      offlineService.saveData('products', productsData)
     }
   } catch (error) {
-    showMessage('Erreur lors du chargement des produits', 'error')
-    products.value = []
+    console.error('Error fetching products:', error)
+    const cached = offlineService.getData('products')
+    if (cached) {
+      products.value = cached
+    } else {
+      showMessage('Erreur lors du chargement des produits', 'error')
+    }
   } finally {
     loadingProducts.value = false
   }
@@ -312,11 +320,17 @@ const fetchCategories = async () => {
     if (response.ok) {
       const data = await response.json()
       if (data.success) {
-        categories.value = Array.isArray(data.data) ? data.data : []
+        const categoriesData = Array.isArray(data.data) ? data.data : []
+        categories.value = categoriesData
+        offlineService.saveData('categories', categoriesData)
       }
     }
   } catch (error) {
     console.error('Error fetching categories:', error)
+    const cached = offlineService.getData('categories')
+    if (cached) {
+      categories.value = cached
+    }
   }
 }
 
@@ -469,46 +483,45 @@ const submitOrder = async () => {
     return
   }
 
+  const orderData = {
+    table_id: props.selectedTable.id,
+    items: orderItems.value.map(item => {
+        const price = props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers
+        return {
+          product_id: item.product.id,
+          quantity: item.quantity,
+          price: price,
+          percent_decrease: null,
+          total_before_decrease: price * item.quantity
+        }
+    }),
+    total: totalAmount.value,
+    percent_decrease: null,
+    total_before_decrease: totalBeforeDecrease.value
+  }
+  
+  if (props.employeeId !== null && props.employeeId !== undefined) {
+    const empId = Number(props.employeeId)
+    if (!isNaN(empId)) {
+      orderData.employee_id = empId
+    }
+  }
+
+  // Offline Handling
+  if (!window.navigator.onLine) {
+    offlineService.queueOrder(orderData)
+    showMessage('Mode Hors-ligne : Mise à jour enregistrée localement. Elle sera synchronisée dès le retour du WiFi.', 'success')
+    showConfirmModal.value = false
+    setTimeout(() => {
+      emit('order-submitted')
+      goBack()
+    }, 2000)
+    return
+  }
+
   submitting.value = true
   try {
-    // Debug: Log employeeId prop
-    console.log('Employee ID prop (update):', props.employeeId, 'Type:', typeof props.employeeId)
-    
-    const orderData = {
-      table_id: props.selectedTable.id,
-      items: orderItems.value.map(item => {
-          const price = props.priceMode === 'menu1' ? item.product.price : item.product.price_strangers
-          return {
-            product_id: item.product.id,
-            quantity: item.quantity,
-            price: price,
-            percent_decrease: null,
-            total_before_decrease: price * item.quantity
-          }
-      }),
-      total: totalAmount.value,
-      percent_decrease: null,
-      total_before_decrease: totalBeforeDecrease.value
-    }
-    
-    // Always include employee_id if it exists (even if 0, though unlikely)
-    // Convert to number to ensure it's a valid integer
-    if (props.employeeId !== null && props.employeeId !== undefined) {
-      const empId = Number(props.employeeId)
-      if (!isNaN(empId)) {
-        orderData.employee_id = empId
-        console.log('✅ Adding employee_id to updated order:', orderData.employee_id, 'Type:', typeof orderData.employee_id)
-      } else {
-        console.warn('⚠️ Employee ID is not a valid number:', props.employeeId)
-      }
-    } else {
-      console.warn('⚠️ Employee ID is null or undefined. Value:', props.employeeId)
-    }
-    
-    console.log('📦 Updated order data being sent:', JSON.stringify(orderData, null, 2))
-
     const url = `${ORDER_API_URL}?id=${currentOrderId.value}`
-
     const response = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -533,7 +546,14 @@ const submitOrder = async () => {
       showMessage(data.message || 'Erreur lors de la mise à jour', 'error')
     }
   } catch (error) {
-    showMessage('Erreur: ' + (error.message || 'Erreur de connexion'), 'error')
+    console.error('Submit update error, queuing:', error)
+    offlineService.queueOrder(orderData)
+    showMessage('Erreur de connexion : Mise à jour mise en attente pour synchronisation auto.', 'success')
+    showConfirmModal.value = false
+    setTimeout(() => {
+      emit('order-submitted')
+      goBack()
+    }, 2000)
   } finally {
     submitting.value = false
   }

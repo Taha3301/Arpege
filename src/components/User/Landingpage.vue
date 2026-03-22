@@ -118,10 +118,9 @@
   
 <script setup>
 import { ref, onMounted } from 'vue'
-import logoImg from '../../assets/logo.png'
-
-const logoUrl = logoImg
 import { getApiUrl, API_ENDPOINTS } from '../../config/api.js'
+import { offlineService } from '../../utils/offlineService'
+import logoUrl from '../../assets/logo.png'
 
 const props = defineProps({
   userName: {
@@ -172,13 +171,21 @@ const fetchTables = async () => {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     const data = await response.json()
     if (data.success) {
-      tables.value = Array.isArray(data.data) ? data.data : []
+      const tablesData = Array.isArray(data.data) ? data.data : []
+      tables.value = tablesData
+      offlineService.saveData('tables', tablesData)
     } else {
       tables.value = []
     }
   } catch (error) {
     console.error('Error fetching tables:', error)
-    tables.value = []
+    const cached = offlineService.getData('tables')
+    if (cached) {
+      tables.value = cached
+      showMessage('Mode Hors-ligne : Tables chargées du cache', 'success')
+    } else {
+      tables.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -259,6 +266,16 @@ const changeTableStatus = async (table, newStatus) => {
 
   updatingTables.value.add(table.id)
   closeStatusModal()
+
+  // Offline Handling for Table Status
+  if (!window.navigator.onLine) {
+    // We don't have a specific queue for status changes yet, 
+    // but we can use the same offlineService or just show a message.
+    // For now, let's just inform the user that status changes need WiFi.
+    showMessage('Désolé, le changement de statut nécessite une connexion WiFi active.', 'error')
+    updatingTables.value.delete(table.id)
+    return
+  }
 
   try {
     console.log('Updating table status:', { tableId: table.id, oldStatus: table.status, newStatus })
